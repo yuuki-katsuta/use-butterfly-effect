@@ -7,22 +7,16 @@ function App() {
 	const [count, setCount] = useState(0);
 	const [doubleCount, setDoubleCount] = useState(0);
 	const [tripleCount, setTripleCount] = useState(0);
-	const [total, setTotal] = useState(0);
 
-	// 🦋 Effect Chain 1
+	// Effect Chain 1
 	useEffect(() => {
 		setDoubleCount(count * 2);
 	}, [count]);
 
-	// 🦋 Effect Chain 2
+	// Effect Chain 2
 	useEffect(() => {
 		setTripleCount(count * 3);
 	}, [count]);
-
-	// 🦋 Effect Chain 3
-	useEffect(() => {
-		setTotal((prev) => prev + doubleCount + tripleCount);
-	}, [doubleCount, tripleCount]);
 
 	return (
 		<>
@@ -37,7 +31,7 @@ function App() {
 			<h1>Effect Chain Demo</h1>
 			<div className="card">
 				<button type="button" onClick={() => setCount((count) => count + 1)}>
-					Click me! (count: {count})
+					Click (count: {count})
 				</button>
 				<div style={{ marginTop: "20px", fontSize: "18px" }}>
 					<p>
@@ -45,9 +39,6 @@ function App() {
 					</p>
 					<p>
 						<strong>Triple Count:</strong> {tripleCount}
-					</p>
-					<p>
-						<strong>Total:</strong> {total}
 					</p>
 				</div>
 			</div>
