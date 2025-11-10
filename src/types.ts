@@ -27,3 +27,18 @@ export interface ButterflyEvent {
 }
 
 export type ButterflyEventListener = (event: ButterflyEvent) => void;
+
+export type Butterfly = {
+	id: string;
+	x: number;
+	y: number;
+	targetX: number;
+	targetY: number;
+	angle: number;
+	speed: number;
+	size: number;
+	color: string;
+	opacity: number;
+	life: number;
+	maxLife: number;
+};
