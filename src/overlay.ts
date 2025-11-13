@@ -9,7 +9,6 @@ import type {
 class ButterflyCanvas {
 	private options: ButterflyEffectOptions;
 	private butterflies: Butterfly[] = [];
-	private animationFrame: number | null = null;
 	private canvas: HTMLCanvasElement;
 	private ctx: CanvasRenderingContext2D;
 
@@ -18,7 +17,6 @@ class ButterflyCanvas {
 
 		this.options = options;
 		this.butterflies = [];
-		this.animationFrame = null;
 
 		this.canvas = document.createElement("canvas");
 		this.canvas.style.cssText = "width: 100%; height: 100%; display: block;";
@@ -130,7 +128,6 @@ class ButterflyCanvas {
 		});
 
 		this.updateActiveButterflyCount();
-		this.animationFrame = requestAnimationFrame(this.animate);
 	};
 
 	updateButterfly(butterfly: Butterfly) {
@@ -170,91 +167,6 @@ class ButterflyCanvas {
 
 		this.ctx.restore();
 	}
-
-	// drawButterfly(butterfly: Butterfly) {
-	// 	const { x, y, angle, size, color, opacity } = butterfly;
-
-	// 	this.ctx.save();
-	// 	this.ctx.globalAlpha = opacity;
-	// 	this.ctx.translate(x, y);
-
-	// 	// Draw body
-	// 	this.ctx.fillStyle = "#1a3a52"; // Dark blue body
-	// 	this.ctx.fillRect(-3, -size / 2, 6, size);
-
-	// 	const wingFlap = Math.sin(angle) * 0.3;
-
-	// 	// Left wing
-	// 	this.ctx.beginPath();
-	// 	this.ctx.ellipse(
-	// 		-size / 3,
-	// 		0,
-	// 		size / 2,
-	// 		size / 1.5,
-	// 		-Math.PI / 4 + wingFlap,
-	// 		0,
-	// 		Math.PI * 2,
-	// 	);
-	// 	this.ctx.fillStyle = color;
-	// 	this.ctx.fill();
-
-	// 	// Left wing outline
-	// 	this.ctx.strokeStyle = "#0a2540";
-	// 	this.ctx.lineWidth = 2;
-	// 	this.ctx.stroke();
-
-	// 	// Right wing
-	// 	this.ctx.beginPath();
-	// 	this.ctx.ellipse(
-	// 		size / 3,
-	// 		0,
-	// 		size / 2,
-	// 		size / 1.5,
-	// 		Math.PI / 4 - wingFlap,
-	// 		0,
-	// 		Math.PI * 2,
-	// 	);
-	// 	this.ctx.fillStyle = color;
-	// 	this.ctx.fill();
-
-	// 	// Right wing outline
-	// 	this.ctx.strokeStyle = "#0a2540";
-	// 	this.ctx.lineWidth = 2;
-	// 	this.ctx.stroke();
-
-	// 	// Add white highlights for depth
-	// 	this.ctx.globalAlpha = opacity * 0.4;
-
-	// 	// Left wing highlight
-	// 	this.ctx.beginPath();
-	// 	this.ctx.ellipse(
-	// 		-size / 3 - size / 8,
-	// 		-size / 8,
-	// 		size / 4,
-	// 		size / 3,
-	// 		-Math.PI / 4 + wingFlap,
-	// 		0,
-	// 		Math.PI * 2,
-	// 	);
-	// 	this.ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
-	// 	this.ctx.fill();
-
-	// 	// Right wing highlight
-	// 	this.ctx.beginPath();
-	// 	this.ctx.ellipse(
-	// 		size / 3 + size / 8,
-	// 		-size / 8,
-	// 		size / 4,
-	// 		size / 3,
-	// 		Math.PI / 4 - wingFlap,
-	// 		0,
-	// 		Math.PI * 2,
-	// 	);
-	// 	this.ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
-	// 	this.ctx.fill();
-
-	// 	this.ctx.restore();
-	// }
 }
 
 export function initOverlay(options: ButterflyEffectOptions) {
