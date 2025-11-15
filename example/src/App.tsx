@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import viteLogo from "/vite.svg";
 import reactLogo from "./assets/react.svg";
 import "./App.css";
@@ -10,17 +10,39 @@ function App() {
 	const [b, setB] = useState(0);
 	const [c, setC] = useState(0);
 
-	useEffect(() => {
+	const updateA = () => {
+		setA(count + 1);
+	};
+
+	const setCountAFn = useCallback(() => {
+		console.log("setCountAFn called");
+		setC(count + 1);
+	}, [count]);
+
+	const setCountBFn = useCallback(() => {
 		setB(count + 1);
 	}, [count]);
 
-	useEffect(() => {
-		setA(b + 1);
-	}, [b]);
+	const setCountBFnNested = useCallback(() => {
+		setCountAFn();
+	}, [setCountAFn]);
 
+	// ------ Pattern 1: Regular function called from useEffect ------
+	// biome-ignore lint/correctness/useExhaustiveDependencies: demo purposes
 	useEffect(() => {
-		setC(a + 1);
-	}, [a]);
+		updateA();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [count]);
+
+	// ------ Pattern 2: useCallback called from useEffect ------
+	useEffect(() => {
+		setCountBFn();
+	}, [setCountBFn]);
+
+	// ------ Pattern 3: Nested useCallback (function A -> function B -> setState) ------
+	useEffect(() => {
+		setCountBFnNested();
+	}, [setCountBFnNested]);
 
 	return (
 		<>
@@ -32,7 +54,7 @@ function App() {
 					<img src={reactLogo} className="logo react" alt="React logo" />
 				</a>
 			</div>
-			<h1>Effect Chain Demo</h1>
+			<h1>Nested Function Effect Chain Demo</h1>
 			<div className="card">
 				<button type="button" onClick={() => setCount((count) => count + 1)}>
 					Click (count: {count})
