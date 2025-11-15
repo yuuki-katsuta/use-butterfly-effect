@@ -11,7 +11,7 @@ export default defineConfig({
 			enabled: true,
 			showStatus: true,
 			animationSpeed: 1000,
-			maxButterflies: 10,
+			maxButterflies: 20,
 		}) as PluginOption,
 	],
 });
