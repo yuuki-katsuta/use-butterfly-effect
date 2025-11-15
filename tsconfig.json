@@ -15,11 +15,7 @@
 		"declarationMap": true,
 		"outDir": "./dist",
 		"rootDir": "./src",
-		"baseUrl": ".",
-		"paths": {
-			"vite-plugin-butterfly-effect/runtime": ["src/runtime.ts"],
-			"vite-plugin-butterfly-effect/overlay": ["src/overlay.ts"]
-		}
+		"baseUrl": "."
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist", "**/*.spec.ts"]

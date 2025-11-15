@@ -1,9 +1,29 @@
 {
-	"name": "butterfly-effect",
+	"name": "vite-plugin-butterfly-effect",
 	"version": "1.0.0",
 	"description": "A Vite plugin that visualizes React useEffect and state update chains as beautiful butterfly effects",
-	"main": "index.js",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./overlay": {
+			"types": "./dist/overlay.d.ts",
+			"import": "./dist/overlay.js"
+		},
+		"./runtime": {
+			"types": "./dist/runtime.d.ts",
+			"import": "./dist/runtime.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
 	"scripts": {
+		"build": "tsdown && tsc --emitDeclarationOnly",
 		"test": "vitest",
 		"test:ui": "vitest --ui",
 		"test:coverage": "vitest --coverage"
@@ -26,6 +46,9 @@
 		"@babel/traverse": "^7.26.0",
 		"@babel/types": "^7.26.0"
 	},
+	"peerDependencies": {
+		"vite": "^5.0.0 || ^6.0.0 || ^7.0.0"
+	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.3.4",
 		"@types/babel__generator": "^7.6.8",
@@ -33,10 +56,9 @@
 		"@types/node": "^24.10.0",
 		"@vitest/coverage-v8": "^4.0.8",
 		"@vitest/ui": "^4.0.8",
-		"happy-dom": "^15.11.7",
-		"tsup": "^8.5.0",
+		"happy-dom": "^20.0.10",
+		"tsdown": "^0.2.0",
 		"typescript": "^5.9.3",
-		"vite": "^7.2.2",
 		"vitest": "^4.0.8"
 	}
 }
