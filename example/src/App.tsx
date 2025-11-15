@@ -5,18 +5,22 @@ import "./App.css";
 
 function App() {
 	const [count, setCount] = useState(0);
-	const [doubleCount, setDoubleCount] = useState(0);
-	const [tripleCount, setTripleCount] = useState(0);
 
-	// Effect Chain 1
+	const [a, setA] = useState(0);
+	const [b, setB] = useState(0);
+	const [c, setC] = useState(0);
+
 	useEffect(() => {
-		setDoubleCount(count * 2);
+		setB(count + 1);
 	}, [count]);
 
-	// Effect Chain 2
 	useEffect(() => {
-		setTripleCount(count * 3);
-	}, [count]);
+		setA(b + 1);
+	}, [b]);
+
+	useEffect(() => {
+		setC(a + 1);
+	}, [a]);
 
 	return (
 		<>
@@ -33,14 +37,9 @@ function App() {
 				<button type="button" onClick={() => setCount((count) => count + 1)}>
 					Click (count: {count})
 				</button>
-				<div style={{ marginTop: "20px", fontSize: "18px" }}>
-					<p>
-						<strong>Double Count:</strong> {doubleCount}
-					</p>
-					<p>
-						<strong>Triple Count:</strong> {tripleCount}
-					</p>
-				</div>
+				<p>a: {a}</p>
+				<p>b: {b}</p>
+				<p>c: {c}</p>
 			</div>
 		</>
 	);
