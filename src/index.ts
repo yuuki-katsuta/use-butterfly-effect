@@ -1,15 +1,9 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import type { Plugin } from "vite";
+import type { Plugin } from "rolldown";
 import { transformReactCode } from "./transform.js";
 import type { ButterflyEffectOptions } from "./types";
 
 const PLUGIN_NAME = "vite-plugin-butterfly-effect";
-const RUNTIME_ENTRY_ID = "\0butterfly-effect-runtime";
 const OVERLAY_ENTRY_ID = "\0butterfly-effect-overlay";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export default function butterflyEffect(
 	options: ButterflyEffectOptions,
@@ -27,42 +21,17 @@ export default function butterflyEffect(
 	if (!enabled) {
 		return {
 			name: PLUGIN_NAME,
-			enforce: "pre",
 		};
 	}
 
 	return {
 		name: PLUGIN_NAME,
-		enforce: "pre",
-
-		// Vite の依存関係の事前バンドル（pre-bundling）からプラグインを除外する
-		config() {
-			return {
-				optimizeDeps: {
-					exclude: ["vite-plugin-butterfly-effect"],
-				},
-			};
-		},
-		// モジュールの解決
 		resolveId(id) {
-			if (id === OVERLAY_ENTRY_ID || id === RUNTIME_ENTRY_ID) {
+			if (id === OVERLAY_ENTRY_ID) {
 				return id;
 			}
-			if (id === "\0butterfly-effect-runtime") {
-				return RUNTIME_ENTRY_ID;
-			}
-			// overlay.tsへのインポートを解決
-			if (id === "vite-plugin-butterfly-effect/overlay") {
-				const resolved = path.resolve(__dirname, "overlay.ts");
-				return resolved;
-			}
-			// runtime.tsへのインポートを解決
-			if (id === "vite-plugin-butterfly-effect/runtime") {
-				const resolved = path.resolve(__dirname, "runtime.ts");
-				return resolved;
-			}
+			return null;
 		},
-		// モジュールの中身を提供
 		load(id) {
 			if (id === OVERLAY_ENTRY_ID) {
 				return `
@@ -79,7 +48,6 @@ export default function butterflyEffect(
         `;
 			}
 		},
-		// メインエントリーポイントにオーバーレイ初期化コードを注入
 		transform(code, id) {
 			// main.tsx または main.ts に対してオーバーレイ初期化コードを注入
 			if (id.match(/\/main\.(ts|tsx|js|jsx)$/)) {
@@ -89,12 +57,12 @@ export default function butterflyEffect(
 				};
 			}
 
-			// TSX/JSXファイルをスキップ
-			if (!id.match(/\.(jsx|tsx)$/)) {
+			// 対象外ファイルはスキップ
+			if (!id.match(/\.(jsx|tsx|ts|js)$/)) {
 				return null;
 			}
 
-			// TSX/JSXファイルを変換
+			// React コードを変換
 			try {
 				const result = transformReactCode(code, {
 					trackEffect,
