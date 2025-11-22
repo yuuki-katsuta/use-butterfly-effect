@@ -1,430 +1,527 @@
 import { describe, expect, test } from "vitest";
 import { transformReactCode } from "../transform";
 
-describe("transformReactCode", () => {
-	describe("基本的な動作", () => {
-		test("trackStateがfalseの場合、変換を行わずnullを返すこと", () => {
-			// Arrange
-			const code = `
-function Counter() {
+describe("transformReactCode with AST", () => {
+	test("should transform setState calls within useEffect", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
   const [count, setCount] = useState(0);
+
   useEffect(() => {
     setCount(count + 1);
-  }, []);
+  }, [count]);
+
+  return <div>{count}</div>;
 }
-      `;
-			const options = { trackState: false, trackEffect: false };
+`;
 
-			// Act
-			const result = transformReactCode(code, options);
+		const result = transformReactCode(code, { trackState: true });
 
-			// Assert
-			expect(result).toBeNull();
-		});
-
-		test("useStateが含まれていない場合、nullを返すこと", () => {
-			// Arrange
-			const code = `
-function Component() {
-  useEffect(() => {
-    console.log('hello');
-  }, []);
-}
-      `;
-			const options = { trackState: true, trackEffect: false };
-
-			// Act
-			const result = transformReactCode(code, options);
-
-			// Assert
-			expect(result).toBeNull();
-		});
-
-		test("useEffectが含まれていない場合、nullを返すこと", () => {
-			// Arrange
-			const code = `
-function Component() {
-  const [count, setCount] = useState(0);
-  return <button onClick={() => setCount(count + 1)}>Click</button>;
-}
-      `;
-			const options = { trackState: true, trackEffect: false };
-
-			// Act
-			const result = transformReactCode(code, options);
-
-			// Assert
-			expect(result).toBeNull();
-		});
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain('componentName: "App"');
 	});
 
-	describe("コンポーネント名の抽出", () => {
-		test("関数宣言形式のコンポーネント名を正しく抽出できること", () => {
-			// Arrange
-			const code = `
-function Counter() {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    setCount(count + 1);
-  }, []);
-}
-      `;
-			const options = { trackState: true, trackEffect: false };
+	test("should handle arrow function components", () => {
+		const code = `
+import { useEffect, useState } from "react";
 
-			// Act
-			const result = transformReactCode(code, options);
-
-			// Assert
-			expect(result).not.toBeNull();
-			expect(result?.code).toContain("componentName: 'Counter'");
-		});
-
-		test("constアロー関数形式のコンポーネント名を正しく抽出できること", () => {
-			// Arrange
-			const code = `
 const MyComponent = () => {
-  const [count, setCount] = useState(0);
+  const [value, setValue] = useState(0);
+
   useEffect(() => {
-    setCount(count + 1);
+    setValue(10);
   }, []);
-}
-      `;
-			const options = { trackState: true, trackEffect: false };
 
-			// Act
-			const result = transformReactCode(code, options);
+  return <div>{value}</div>;
+};
+`;
 
-			// Assert
-			expect(result).not.toBeNull();
-			expect(result?.code).toContain("componentName: 'MyComponent'");
-		});
+		const result = transformReactCode(code, { trackState: true });
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain('componentName: "MyComponent"');
 	});
 
-	describe("useState setter関数の抽出", () => {
-		test("単一のuseStateからsetter名を抽出できること", () => {
-			// Arrange
-			const code = `
-function Counter() {
+	test("should handle multiple useState hooks", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
   const [count, setCount] = useState(0);
-  useEffect(() => {
-    setCount(count + 1);
-  }, []);
-}
-      `;
-			const options = { trackState: true, trackEffect: false };
-
-			// Act
-			const result = transformReactCode(code, options);
-
-			// Assert
-			expect(result).not.toBeNull();
-			expect(result?.code).toContain("__trackStateUpdate");
-		});
-
-		test("複数のuseStateからsetter名を抽出できること", () => {
-			// Arrange
-			const code = `
-function Component() {
-  const [count, setCount] = useState(0);
-  const [name, setName] = useState('');
-  const [isOpen, setIsOpen] = useState(false);
+  const [name, setName] = useState("");
 
   useEffect(() => {
-    setCount(count + 1);
-    setName('updated');
-    setIsOpen(true);
+    setCount(1);
+    setName("test");
   }, []);
+
+  return <div>{count} {name}</div>;
 }
-      `;
-			const options = { trackState: true, trackEffect: false };
+`;
 
-			// Act
-			const result = transformReactCode(code, options);
+		const result = transformReactCode(code, { trackState: true });
 
-			// Assert
-			expect(result).not.toBeNull();
-			// 各setterの呼び出しがトラッキングされることを確認
-			const trackingCalls = result?.code.match(/__trackStateUpdate/g) || [];
-			expect(trackingCalls.length).toBeGreaterThanOrEqual(3);
-		});
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
+		// Should have two tracking calls (one for each setState)
+		const trackingCalls = result?.code.match(/__trackStateUpdate/g);
+		expect(trackingCalls?.length).toBeGreaterThanOrEqual(2);
 	});
 
-	describe("useEffect内のsetState呼び出しの変換", () => {
-		test("useEffect内のsetStateにトラッキングコードが注入されること", () => {
-			// Arrange
-			const code = `
-function Counter() {
+	test("should handle JSX with inline styles (braces in JSX)", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
   const [count, setCount] = useState(0);
+
   useEffect(() => {
     setCount(count + 1);
-  }, []);
+  }, [count]);
+
+  return <div style={{ margin: 0, padding: 10 }}>{count}</div>;
 }
-      `;
-			const options = { trackState: true, trackEffect: false };
+`;
 
-			// Act
-			const result = transformReactCode(code, options);
+		const result = transformReactCode(code, { trackState: true });
 
-			// Assert
-			expect(result).not.toBeNull();
-			expect(result?.code).toContain("__trackStateUpdate");
-			expect(result?.code).toContain("componentName: 'Counter'");
-			expect(result?.code).toContain("line:");
-			expect(result?.code).toContain("timestamp:");
-		});
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain('componentName: "App"');
+	});
 
-		test("useEffect外のsetStateには変換が適用されないこと", () => {
-			// Arrange
-			const code = `
-function Counter() {
+	test("should NOT transform setState calls outside useEffect", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
   const [count, setCount] = useState(0);
 
   const handleClick = () => {
-    setCount(count + 1);
+    setCount(count + 1); // This should NOT be tracked
   };
 
   useEffect(() => {
-    setCount(count + 1);
+    // Empty effect
   }, []);
+
+  return <button onClick={handleClick}>{count}</button>;
 }
-      `;
-			const options = { trackState: true, trackEffect: false };
+`;
 
-			// Act
-			const result = transformReactCode(code, options);
+		const result = transformReactCode(code, { trackState: true });
 
-			// Assert
-			expect(result).not.toBeNull();
-			// 注: 現在の実装ではhandleClick内も変換される可能性があるため、
-			// useEffect内のものは確実に変換されることを確認
-			const trackingCalls = result?.code.match(/__trackStateUpdate/g) || [];
-			expect(trackingCalls.length).toBeGreaterThanOrEqual(1);
-		});
+		// Should return null because there's no setState in useEffect
+		expect(result).toBeNull();
+	});
 
-		test("複数のuseEffectがある場合、すべてのsetStateが変換されること", () => {
-			// Arrange
-			const code = `
-function Component() {
+	test("should return null when trackState is false", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
   const [count, setCount] = useState(0);
-  const [name, setName] = useState('');
 
   useEffect(() => {
     setCount(count + 1);
-  }, []);
-
-  useEffect(() => {
-    setName('updated');
   }, [count]);
+
+  return <div>{count}</div>;
 }
-      `;
-			const options = { trackState: true, trackEffect: false };
+`;
 
-			// Act
-			const result = transformReactCode(code, options);
+		const result = transformReactCode(code, { trackState: false });
 
-			// Assert
-			expect(result).not.toBeNull();
-			const trackingCalls = result?.code.match(/__trackStateUpdate/g) || [];
-			// 少なくとも2つのuseEffect内のsetStateが変換される
-			expect(trackingCalls.length).toBeGreaterThanOrEqual(2);
-		});
+		expect(result).toBeNull();
 	});
 
-	describe("インポート文の追加", () => {
-		test("__trackStateUpdateのインポート文が追加されること", () => {
-			// Arrange
-			const code = `
-function Counter() {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    setCount(count + 1);
-  }, []);
+	test("should return null when no useState or useEffect present", () => {
+		const code = `
+function App() {
+  return <div>Hello</div>;
 }
-      `;
-			const options = { trackState: true, trackEffect: false };
+`;
 
-			// Act
-			const result = transformReactCode(code, options);
+		const result = transformReactCode(code, { trackState: true });
 
-			// Assert
-			expect(result).not.toBeNull();
-			expect(result?.code).toContain(
-				"import { __trackStateUpdate } from 'vite-plugin-butterfly-effect/runtime'",
-			);
-		});
-
-		test("既に__trackStateUpdateが含まれている場合、重複してインポートしないこと", () => {
-			// Arrange
-			const code = `
-import { __trackStateUpdate } from 'vite-plugin-butterfly-effect/runtime';
-
-function Counter() {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    setCount(count + 1);
-  }, []);
-}
-      `;
-			const options = { trackState: true, trackEffect: false };
-
-			// Act
-			const result = transformReactCode(code, options);
-
-			// Assert
-			expect(result).not.toBeNull();
-			// インポート文が重複していないことを確認
-			const importMatches =
-				result?.code.match(/import \{ __trackStateUpdate \}/g) || [];
-			expect(importMatches.length).toBe(1);
-		});
+		expect(result).toBeNull();
 	});
 
-	describe("行番号の追跡", () => {
-		test("変換されたコードに正しい行番号が含まれること", () => {
-			// Arrange
-			const code = `function Counter() {
-  const [count, setCount] = useState(0);
+	test("should handle multiline useState destructuring", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [
+    count,
+    setCount
+  ] = useState(0);
+
   useEffect(() => {
-    setCount(count + 1);
+    setCount(1);
   }, []);
-}`;
-			const options = { trackState: true, trackEffect: false };
 
-			// Act
-			const result = transformReactCode(code, options);
-
-			// Assert
-			expect(result).not.toBeNull();
-			// setCount呼び出しは4行目にある（インポート追加後は5行目）
-			expect(result?.code).toMatch(/line: \d+/);
-		});
-	});
-
-	describe("インデントの保持", () => {
-		test("元のコードのインデントが保持されること", () => {
-			// Arrange
-			const code = `
-function Counter() {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    setCount(count + 1);
-  }, []);
+  return <div>{count}</div>;
 }
-      `;
-			const options = { trackState: true, trackEffect: false };
+`;
 
-			// Act
-			const result = transformReactCode(code, options);
+		const result = transformReactCode(code, { trackState: true });
 
-			// Assert
-			expect(result).not.toBeNull();
-			// インデントが保持されていることを確認
-			expect(result?.code).toContain("    __trackStateUpdate");
-		});
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
 	});
 
-	describe("複雑なケース", () => {
-		test("ネストしたuseEffect内のsetStateも変換されること", () => {
-			// Arrange
-			const code = `
-function Component() {
-  const [count, setCount] = useState(0);
+	test("should handle TypeScript generic types", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState<number>(0);
 
   useEffect(() => {
-    if (count > 0) {
-      setCount(count + 1);
+    setCount(1);
+  }, []);
+
+  return <div>{count}</div>;
+}
+`;
+
+		const result = transformReactCode(code, { trackState: true });
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
+	});
+
+	test("should transform setState calls within useCallback", () => {
+		const code = `
+import { useCallback, useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+  const [b, setB] = useState(0);
+
+  const setCountBFn = useCallback(() => {
+    setB(count + 1);
+  }, [count]);
+
+  useEffect(() => {
+    setCountBFn();
+  }, [setCountBFn]);
+
+  return <div>{b}</div>;
+}
+`;
+
+		const result = transformReactCode(code, { trackState: true });
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
+		// Should track setState inside useCallback
+		expect(result?.code).toMatch(/setB.*count.*1/);
+	});
+
+	test("should transform setState calls within useCallback when called from useEffect", () => {
+		const code = `
+import { useCallback, useEffect, useState } from "react";
+
+function App() {
+  const [data, setData] = useState([]);
+
+  const fetchData = useCallback(() => {
+    fetch('/api/data').then(res => {
+      setData(res.json());
+    });
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return <div>{data.length}</div>;
+}
+`;
+
+		const result = transformReactCode(code, { trackState: true });
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
+		// Should track setState inside useCallback
+		expect(result?.code).toContain("setData");
+	});
+
+	// New tests for nested function call tracking
+
+	test("should track setState in regular function called from useEffect", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+  const [b, setB] = useState(0);
+
+  const setCountBFn = () => {
+    setB(count + 1);
+  };
+
+  useEffect(() => {
+    setCountBFn();
+  }, []);
+
+  return <div>{b}</div>;
+}
+`;
+
+		const result = transformReactCode(code, { trackState: true });
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
+	});
+
+	test("should track setState in nested function calls (2 levels)", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+  const [b, setB] = useState(0);
+
+  const setCountAFn = () => {
+    setB(count + 1);
+  };
+
+  const setCountBFn = () => {
+    setCountAFn();
+  };
+
+  useEffect(() => {
+    setCountBFn();
+  }, []);
+
+  return <div>{b}</div>;
+}
+`;
+
+		const result = transformReactCode(code, { trackState: true });
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
+	});
+
+	test("should track setState in nested useCallback calls", () => {
+		const code = `
+import { useCallback, useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+  const [b, setB] = useState(0);
+
+  const setCountAFn = useCallback(() => {
+    setB(count + 1);
+  }, [count]);
+
+  const setCountBFn = useCallback(() => {
+    setCountAFn();
+  }, [count]);
+
+  useEffect(() => {
+    setCountBFn();
+  }, [setCountBFn]);
+
+  return <div>{b}</div>;
+}
+`;
+
+		const result = transformReactCode(code, { trackState: true });
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
+	});
+
+	test("should track setState in deeply nested function calls (3+ levels)", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [value, setValue] = useState(0);
+
+  const level3 = () => setValue(100);
+  const level2 = () => level3();
+  const level1 = () => level2();
+
+  useEffect(() => {
+    level1();
+  }, []);
+
+  return <div>{value}</div>;
+}
+`;
+
+		const result = transformReactCode(code, { trackState: true });
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
+	});
+
+	test("should track setState in mixed function types (regular + useCallback)", () => {
+		const code = `
+import { useCallback, useEffect, useState } from "react";
+
+function App() {
+  const [value, setValue] = useState(0);
+
+  const regularFn = () => setValue(50);
+
+  const callbackFn = useCallback(() => {
+    regularFn();
+  }, []);
+
+  useEffect(() => {
+    callbackFn();
+  }, [callbackFn]);
+
+  return <div>{value}</div>;
+}
+`;
+
+		const result = transformReactCode(code, { trackState: true });
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
+	});
+
+	test("should not track setState in imported functions", () => {
+		const code = `
+import { useEffect, useState } from "react";
+import { externalFunction } from "./utils";
+
+function App() {
+  const [value, setValue] = useState(0);
+
+  useEffect(() => {
+    externalFunction();
+  }, []);
+
+  return <div>{value}</div>;
+}
+`;
+
+		const result = transformReactCode(code, { trackState: true });
+
+		// Should return null since no trackable setState found
+		expect(result).toBeNull();
+	});
+
+	test("should track setState in conditionally called nested functions", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [value, setValue] = useState(0);
+
+  const updateValue = () => {
+    if (true) {
+      setValue(100);
     }
-  }, [count]);
-}
-      `;
-			const options = { trackState: true, trackEffect: false };
+  };
 
-			// Act
-			const result = transformReactCode(code, options);
-
-			// Assert
-			expect(result).not.toBeNull();
-			expect(result?.code).toContain("__trackStateUpdate");
-		});
-
-		test("setState呼び出しが関数形式の場合も変換されること", () => {
-			// Arrange
-			const code = `
-function Counter() {
-  const [count, setCount] = useState(0);
   useEffect(() => {
-    setCount(prev => prev + 1);
+    updateValue();
   }, []);
+
+  return <div>{value}</div>;
 }
-      `;
-			const options = { trackState: true, trackEffect: false };
+`;
 
-			// Act
-			const result = transformReactCode(code, options);
+		const result = transformReactCode(code, { trackState: true });
 
-			// Assert
-			expect(result).not.toBeNull();
-			expect(result?.code).toContain("__trackStateUpdate");
-			expect(result?.code).toContain("setCount(prev => prev + 1)");
-		});
-
-		test("同じ行に複数の処理がある場合も正しく変換されること", () => {
-			// Arrange
-			const code = `
-function Component() {
-  const [count, setCount] = useState(0);
-  useEffect(() => { setCount(count + 1); }, []);
-}
-      `;
-			const options = { trackState: true, trackEffect: false };
-
-			// Act
-			const result = transformReactCode(code, options);
-
-			// Assert
-			expect(result).not.toBeNull();
-			expect(result?.code).toContain("__trackStateUpdate");
-		});
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
 	});
 
-	describe("戻り値の形式", () => {
-		test("変換が成功した場合、codeとmapを含むオブジェクトを返すこと", () => {
-			// Arrange
-			const code = `
-function Counter() {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    setCount(count + 1);
+	test("should track setState in useCallback without useEffect (for cross-file calls)", () => {
+		const code = `
+import { useCallback, useState } from "react";
+
+export const useSample = () => {
+  const [, setCountA] = useState(0);
+
+  const increment = useCallback(() => {
+    setCountA((prev) => prev + 1);
   }, []);
-}
-      `;
-			const options = { trackState: true, trackEffect: false };
 
-			// Act
-			const result = transformReactCode(code, options);
+  return { increment };
+};
+`;
 
-			// Assert
-			expect(result).not.toBeNull();
-			expect(result).toHaveProperty("code");
-			expect(result).toHaveProperty("map");
-			expect(result?.map).toBeNull();
-		});
+		const result = transformReactCode(code, { trackState: true });
 
-		test("変換が不要な場合、nullを返すこと", () => {
-			// Arrange
-			const code = `
-function Component() {
-  const [count, setCount] = useState(0);
-  return <button onClick={() => setCount(count + 1)}>Click</button>;
-}
-      `;
-			const options = { trackState: true, trackEffect: false };
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("setCountA");
+	});
 
-			// Act
-			const result = transformReactCode(code, options);
+	test("should track setState in regular function without useCallback (for custom hooks)", () => {
+		const code = `
+import { useState } from "react";
 
-			// Assert
-			expect(result).toBeNull();
-		});
+export const useSample = () => {
+  const [, setCountA] = useState(0);
+
+  const increment = () => {
+    setCountA((prev) => prev + 1);
+  };
+
+  return { increment };
+};
+`;
+
+		const result = transformReactCode(code, { trackState: true });
+
+		// This should now track setState in regular functions from custom hooks
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("setCountA");
+	});
+
+	test("should inject tracking only once for setState reached through multiple paths", () => {
+		const code = `
+import { useCallback, useEffect, useState } from "react";
+
+const useSampleState = () => {
+  const [countA, setCountA] = useState(0);
+  const increment = useCallback(() => {
+    setCountA((prev) => prev + 1);
+  }, []);
+  return { countA, setCountA, increment };
+};
+
+export const useExecFn = () => {
+  const { countA, setCountA, increment } = useSampleState();
+  const exec = useCallback(() => {
+    increment();
+  }, [increment]);
+
+  useEffect(() => {
+    exec();
+  }, [exec]);
+
+  return { exec, countA };
+};
+`;
+
+		const result = transformReactCode(code, { trackState: true });
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__trackStateUpdate");
+
+		// Count the number of __trackStateUpdate injections
+		// Should be 2 or less (reduced from 3 with duplicate detection)
+		// Note: we have 2 custom hooks in the same file, which can lead to 2 injections
+		const trackingCalls = result?.code.match(/__trackStateUpdate/g);
+		expect(trackingCalls?.length).toBeLessThanOrEqual(2);
 	});
 });

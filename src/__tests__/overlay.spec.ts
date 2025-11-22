@@ -2,15 +2,42 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { ButterflyEvents } from "../runtime";
 import type { ButterflyEffectOptions } from "../types";
 
-// overlay.tsは直接エクスポートされていないため、モジュールとしてインポート
-// テストのためにButterflyCanvasをエクスポート可能にする必要があるかもしれません
-// 今回はinitOverlay関数の動作をテストします
-
 describe("initOverlay", () => {
 	beforeEach(() => {
 		// Arrange: 各テスト前にDOMをクリーンアップ
 		document.body.innerHTML = "";
 		vi.clearAllMocks();
+
+		// Clear event listeners to prevent cross-test contamination
+		ButterflyEvents.clear();
+
+		// Mock canvas context for testing
+		// happy-dom doesn't fully support canvas 2D context
+		const mockGetContext = vi.fn((contextType: string) => {
+			if (contextType === "2d") {
+				return {
+					clearRect: vi.fn(),
+					save: vi.fn(),
+					restore: vi.fn(),
+					translate: vi.fn(),
+					fillText: vi.fn(),
+					globalAlpha: 1,
+					font: "",
+					textAlign: "center",
+					textBaseline: "middle",
+					canvas: {
+						width: window.innerWidth,
+						height: window.innerHeight,
+					},
+				} as unknown as CanvasRenderingContext2D;
+			}
+			return null;
+		});
+
+		HTMLCanvasElement.prototype.getContext = mockGetContext as any;
+
+		// Mock window.addEventListener for resize
+		vi.spyOn(window, "addEventListener");
 	});
 
 	describe("オーバーレイコンテナの作成", () => {
