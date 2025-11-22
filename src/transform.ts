@@ -44,26 +44,23 @@ export const transformReactCode = (code: string, options: TransformOptions) => {
 		return null;
 	}
 
-	// Quick pre-check to avoid parsing files without React hooks
-	// Process files that have useState (for tracking setState calls)
 	if (!code.includes("useState")) {
 		return null;
 	}
 
 	try {
-		// Parse code to AST with support for JSX and TypeScript
 		const ast = parse(code, {
 			sourceType: "module",
 			plugins: ["jsx", "typescript"],
 		});
 
-		// Track useState setter names for each component scope
+		// useStateのset関数名を格納
 		const setterNames = new Set<string>();
 		let componentName = "Unknown";
 		let hasTransformed = false;
 		const needsImport = !code.includes("__trackStateUpdate");
 
-		// Registry to store all function definitions in the component
+		// useEffect内で呼ばれる関数を追跡するための辞書
 		const functionRegistry = new Map<string, FunctionInfo>();
 
 		// Track instrumented locations to prevent duplicate injections
@@ -71,15 +68,17 @@ export const transformReactCode = (code: string, options: TransformOptions) => {
 		const instrumentedLocations = new Set<string>();
 
 		traverse(ast, {
-			// Extract component name from function declarations or variable declarations
-
 			// Handle: function handleClick() { ... }
+			// `function`キーワードで定義された関数宣言を検出
 			FunctionDeclaration(path) {
+				// === Reactコンポーネント名を登録 ===
 				if (isReactComponent(path)) {
 					componentName = path.node.id?.name || "Unknown";
 				}
 
-				// Collect regular function declarations defined in the component
+				// === functionRegistry への登録 ===
+				// この関数がReactコンポーネント/カスタムフック内で定義されているかチェック
+				// function MyComponent()のようなReactコンポーネントは登録されない
 				const name = path.node.id?.name;
 				if (name && isDefinedInComponentOrHook(path)) {
 					functionRegistry.set(name, {
@@ -92,22 +91,25 @@ export const transformReactCode = (code: string, options: TransformOptions) => {
 				}
 			},
 
-			// Handle: const ComponentName = () => { ... }
+			// 変数宣言の右辺を検出
 			VariableDeclarator(path) {
+				// アロー関数/関数式で定義された React コンポーネント/カスタムフックの名前を取得
 				if (
 					t.isIdentifier(path.node.id) &&
 					(t.isArrowFunctionExpression(path.node.init) ||
 						t.isFunctionExpression(path.node.init))
 				) {
 					const name = path.node.id.name;
-					// Check if it looks like a component (starts with uppercase) or custom hook (starts with "use")
 					if (/^[A-Z]/.test(name) || /^use[A-Z]/.test(name)) {
 						componentName = name;
 					}
 				}
 
+				// === セッター関数登録 ===
+
 				// Extract useState setter names
 				// const [count, setCount] = useState(0);
+				// useStateの左辺が有効な代入先かをチェック
 				if (isUseStateCall(path.node.init) && t.isLVal(path.node.id)) {
 					const setter = extractSetterName(path.node.id);
 					if (setter) {
@@ -115,12 +117,13 @@ export const transformReactCode = (code: string, options: TransformOptions) => {
 					}
 				}
 
-				// Collect function definitions (regular functions and useCallback/useMemo)
+				// === functionRegistry への登録 ===
+
 				if (t.isIdentifier(path.node.id)) {
 					const name = path.node.id.name;
 					const init = path.node.init;
 
-					// Regular arrow/function expressions
+					// function宣言、関数式を登録
 					if (
 						(t.isArrowFunctionExpression(init) ||
 							t.isFunctionExpression(init)) &&
@@ -136,7 +139,7 @@ export const transformReactCode = (code: string, options: TransformOptions) => {
 						});
 					}
 
-					// useCallback wrapped functions
+					// useCallbackでラップされた関数を登録
 					if (t.isCallExpression(init) && isUseCallbackCall(init)) {
 						const callback = init.arguments[0];
 						if (
@@ -157,26 +160,29 @@ export const transformReactCode = (code: string, options: TransformOptions) => {
 				}
 			},
 
-			// Find useEffect and useCallback calls and recursively process their callback bodies
+			// 関数呼び出しを検出する
 			CallExpression(path) {
-				// Process useEffect as the entry point
+				// useEffectを検出
 				if (isUseEffectCall(path.node)) {
+					// 第1引数（コールバック関数）を取得
 					const callback = path.node.arguments[0];
 
+					// コールバック関数かチェック
 					if (
 						t.isArrowFunctionExpression(callback) ||
 						t.isFunctionExpression(callback)
 					) {
+						// 関数のbody内を再起的に処理してトラッキング
 						const body = callback.body;
 						const bodyPath = t.isBlockStatement(body)
 							? (path.get("arguments.0.body") as NodePath<t.BlockStatement>)
 							: null;
 
 						if (bodyPath) {
-							// Clear visited set for each useEffect
+							// 訪問済みとしてマークするための辞書
 							const visitedFunctions = new Set<string>();
 
-							// Use the recursive processing function
+							// 変換が発生したかのフラグ
 							const transformed = { value: false };
 							processCallbackBody(
 								bodyPath,
@@ -195,41 +201,45 @@ export const transformReactCode = (code: string, options: TransformOptions) => {
 					}
 				}
 
-				// Also process useCallback directly (for cross-file calls)
-				if (isUseCallbackCall(path.node)) {
-					const callback = path.node.arguments[0];
+				// useCallbackの検出
+				// この記述は全てをトラッキングしてしまうので不要です
+				// if (isUseCallbackCall(path.node)) {
+				// 	// 第1引数（コールバック関数）を取得
+				// 	const callback = path.node.arguments[0];
 
-					if (
-						t.isArrowFunctionExpression(callback) ||
-						t.isFunctionExpression(callback)
-					) {
-						const body = callback.body;
-						const bodyPath = t.isBlockStatement(body)
-							? (path.get("arguments.0.body") as NodePath<t.BlockStatement>)
-							: null;
+				// 	// コールバック関数かチェック
+				// 	if (
+				// 		t.isArrowFunctionExpression(callback) ||
+				// 		t.isFunctionExpression(callback)
+				// 	) {
+				// 		// 関数のbody内を再起的に処理してトラッキング
+				// 		const body = callback.body;
+				// 		const bodyPath = t.isBlockStatement(body)
+				// 			? (path.get("arguments.0.body") as NodePath<t.BlockStatement>)
+				// 			: null;
 
-						if (bodyPath) {
-							// Clear visited set for each useCallback
-							const visitedFunctions = new Set<string>();
+				// 		if (bodyPath) {
+				// 			// 訪問済みとしてマークするための辞書
+				// 			const visitedFunctions = new Set<string>();
 
-							// Use the recursive processing function
-							const transformed = { value: false };
-							processCallbackBody(
-								bodyPath,
-								setterNames,
-								componentName,
-								functionRegistry,
-								visitedFunctions,
-								transformed,
-								instrumentedLocations,
-							);
+				// 			// 変換が発生したかのフラグ
+				// 			const transformed = { value: false };
+				// 			processCallbackBody(
+				// 				bodyPath,
+				// 				setterNames,
+				// 				componentName,
+				// 				functionRegistry,
+				// 				visitedFunctions,
+				// 				transformed,
+				// 				instrumentedLocations,
+				// 			);
 
-							if (transformed.value) {
-								hasTransformed = true;
-							}
-						}
-					}
-				}
+				// 			if (transformed.value) {
+				// 				hasTransformed = true;
+				// 			}
+				// 		}
+				// 	}
+				// }
 			},
 		});
 
@@ -351,16 +361,19 @@ function isSetStateCall(
  */
 function extractSetterName(id: t.LVal): string | null {
 	if (t.isArrayPattern(id) && id.elements.length >= 2) {
+		// 状態更新関数を抽出
 		const setter = id.elements[1];
 		if (t.isIdentifier(setter)) {
 			return setter.name;
 		}
 	}
+
 	return null;
 }
 
 /**
- * Create a tracking call AST node
+ * トラッキング用の関数呼び出しの AST ノードを生成
+ * 生成される AST:
  * __trackStateUpdate({ componentName: 'App', line: 13, timestamp: Date.now() })
  */
 function createTrackingCall(
@@ -386,24 +399,24 @@ function createTrackingCall(
 }
 
 /**
- * Check if a path is defined within a React component or custom hook scope
+ * 指定された ASTノードがReact コンポーネントまたはカスタムフック内で定義されているかどうかを判定
  */
 function isDefinedInComponentOrHook(path: NodePath): boolean {
+	// 親を辿る
 	let current = path.parentPath;
 	while (current) {
 		const node = current.node;
 
-		// Check if we're inside a component or custom hook function
+		// 関数スコープを発見
 		if (
 			t.isFunctionDeclaration(node) ||
 			t.isFunctionExpression(node) ||
 			t.isArrowFunctionExpression(node)
 		) {
-			// Found a function scope - check if it's a component or hook
+			// 名前が大文字で始まる or "use"+大文字 の場合、
 			const parent = current.parent;
 			if (t.isVariableDeclarator(parent) && t.isIdentifier(parent.id)) {
 				const name = parent.id.name;
-				// Component names start with uppercase, custom hooks start with "use"
 				return /^[A-Z]/.test(name) || /^use[A-Z]/.test(name);
 			}
 			if (t.isFunctionDeclaration(node) && node.id) {
@@ -412,8 +425,10 @@ function isDefinedInComponentOrHook(path: NodePath): boolean {
 			}
 		}
 
+		// 関数スコープが見つからない場合、さらに親を辿る
 		current = current.parentPath;
 	}
+
 	return false;
 }
 
@@ -434,12 +449,39 @@ function getBodyPath(
 	if (t.isArrowFunctionExpression(node) && !t.isBlockStatement(node.body)) {
 		return fnPath.get("body") as NodePath;
 	}
+
 	return null;
 }
 
 /**
- * Recursively process a callback body to find and track setState calls,
- * including calls within nested functions
+ * useEffect のコールバック関数の body を再帰的に処理し、setState 呼び出しにトラッキングコードを注入する
+ * 以下の処理を行う:
+ * 1. 直接的な setState 呼び出しを検出してトラッキングコードを注入
+ * 2. functionRegistry に登録された関数呼び出しを検出し、その中身を再帰的に処理
+ * 3. 循環参照を visitedFunctions で追跡して無限ループを防止
+ * 4. 重複注入を instrumentedLocations で防止
+ *
+ * @param bodyPath - 処理対象の関数 body の AST path (BlockStatement または Expression)
+ * @param setterNames - setState 関数名のセット (例: "setCount")
+ * @param componentName - トラッキングコードに記録するコンポーネント名
+ * @param functionRegistry - コンポーネント/フック内で定義された関数の登録情報
+ * @param visitedFunctions - 循環参照防止のための訪問済み関数名のセット（再帰呼び出し中に共有される）
+ * @param hasTransformed - 変換が発生したかを記録するフラグ（参照渡しのためオブジェクト）
+ * @param instrumentedLocations - トラッキングコードを注入済みの位置（"line:column" 形式）のセット
+ *
+ * @example
+ * // 処理対象のコード
+ * useEffect(() => {
+ *   setCount(0);      // ← 直接呼び出し: トラッキング注入
+ *   updateCount();    // ← 間接呼び出し: functionRegistry から取得して再帰処理
+ * }, []);
+ *
+ * // 変換後
+ * useEffect(() => {
+ *   __trackStateUpdate('setCount', 'MyComponent', 123, 45);
+ *   setCount(0);
+ *   updateCount();  // ← この中の setState もトラッキングされる
+ * }, []);
  */
 function processCallbackBody(
 	bodyPath: NodePath<t.BlockStatement> | NodePath,
@@ -450,20 +492,27 @@ function processCallbackBody(
 	hasTransformed: { value: boolean },
 	instrumentedLocations: Set<string>,
 ): void {
-	// Handle expression bodies (arrow functions without block statement)
+	// BlockStatementとそうでない場合で、トラッキングコードの注入難易度が変わる
+
+	// NOTE：
+	// 現在の実装ではBlockStatementではない場合（中括弧なし）に対応していない
+	// 将来的に対応する予定
+
+	// BlockStatementではない場合のbody処理
+	// 例：useEffect(() => setCount(0), []);
 	if (!t.isBlockStatement(bodyPath.node)) {
-		// Check if it's a direct setState call
+		// 直接的なset関数の呼び出し
 		if (
 			t.isCallExpression(bodyPath.node) &&
 			isSetStateCall(bodyPath.node, setterNames)
 		) {
-			// This is a direct setState call in expression body
-			// We can't inject tracking here easily, but mark as transformed
+			// 変換フラグを有効にする
 			hasTransformed.value = true;
+
 			return;
 		}
 
-		// Check if it's a function call that might contain setState
+		// set関数を含む可能性のある関数呼び出し
 		if (
 			t.isCallExpression(bodyPath.node) &&
 			t.isIdentifier(bodyPath.node.callee)
@@ -471,11 +520,12 @@ function processCallbackBody(
 			const functionName = bodyPath.node.callee.name;
 			const functionInfo = functionRegistry.get(functionName);
 
+			// 登録済みの関数である場合
 			if (functionInfo && !visitedFunctions.has(functionName)) {
-				// Mark as visited to prevent cycles
+				// 循環参照を防ぐために訪問済みとしてマークする
 				visitedFunctions.add(functionName);
 
-				// Recursively process the called function's body
+				// 関数の中身を再起的に処理
 				if (functionInfo.bodyPath) {
 					processCallbackBody(
 						functionInfo.bodyPath,
@@ -488,15 +538,17 @@ function processCallbackBody(
 					);
 				}
 
-				// Unmark after processing
+				// 処理終了後に訪問済みマークを解除
 				visitedFunctions.delete(functionName);
 			}
 		}
+
 		return;
 	}
 
-	// For block statements, traverse all call expressions
-	// Capture variables for use in traverse callback
+	// ブロック文の場合、全ての関数呼び出しを走査
+	// 例：useEffect(() => {setCount(0), ...}, []);
+	// traverse のコールバック内で使用するために変数をキャプチャ
 	const _setterNames = setterNames;
 	const _componentName = componentName;
 	const _functionRegistry = functionRegistry;
@@ -504,43 +556,48 @@ function processCallbackBody(
 	const _hasTransformed = hasTransformed;
 	const _instrumentedLocations = instrumentedLocations;
 
+	// AST の特定ノード配下を走査する
 	bodyPath.traverse({
+		// 関数呼び出し
 		CallExpression(innerPath) {
 			const callee = innerPath.node.callee;
 
-			// Case 1: Direct setState call
+			// 直接的なset関数の呼び出し
 			if (isSetStateCall(innerPath.node, _setterNames)) {
 				const line = innerPath.node.loc?.start.line || 0;
 				const column = innerPath.node.loc?.start.column || 0;
 				const locationKey = `${line}:${column}`;
 
-				// Skip if this location has already been instrumented
+				// すでにトラッキングコードが注入されている場合はスキップ
 				if (_instrumentedLocations.has(locationKey)) {
 					return;
 				}
 
 				const trackingCall = createTrackingCall(_componentName, line);
-
+				// 最も近い親の文（Statement=プログラムの実行単位）を取得
+				// トラッキングコードを挿入する位置を特定するために必要
 				const statement = innerPath.getStatementParent();
 				if (statement) {
+					// トラッキングコードを挿入
 					statement.insertBefore(t.expressionStatement(trackingCall));
 					_hasTransformed.value = true;
-					// Mark this location as instrumented
+					// この位置を注入済みとしてマーク
 					_instrumentedLocations.add(locationKey);
 				}
+
 				return;
 			}
 
-			// Case 2: Function call that might contain setState
+			// set関数を含む可能性のある関数呼び出し
 			if (t.isIdentifier(callee)) {
 				const functionName = callee.name;
 				const functionInfo = _functionRegistry.get(functionName);
 
 				if (functionInfo && !_visitedFunctions.has(functionName)) {
-					// Mark as visited to prevent cycles
+					// 循環参照を防ぐために訪問済みとしてマークする
 					_visitedFunctions.add(functionName);
 
-					// Recursively process the called function's body
+					// 関数の中身を再起的に処理
 					if (functionInfo.bodyPath) {
 						processCallbackBody(
 							functionInfo.bodyPath,
@@ -553,7 +610,7 @@ function processCallbackBody(
 						);
 					}
 
-					// Unmark after processing (allows same function in different branches)
+					// 処理終了後に訪問済みマークを解除
 					_visitedFunctions.delete(functionName);
 				}
 			}
