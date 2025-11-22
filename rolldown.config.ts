@@ -17,5 +17,6 @@ export default defineConfig({
 		"@babel/traverse",
 		"@babel/types",
 		"@babel/generator",
+		"enhanced-resolve",
 	],
 });
