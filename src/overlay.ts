@@ -1,4 +1,4 @@
-import { ButterflyEvents } from "vite-plugin-butterfly-effect/runtime";
+import { ButterflyEvents } from "./runtime";
 import type {
 	Butterfly,
 	ButterflyEffectOptions,
@@ -128,6 +128,9 @@ class ButterflyCanvas {
 		});
 
 		this.updateActiveButterflyCount();
+
+		// Continue the animation loop
+		requestAnimationFrame(this.animate);
 	};
 
 	updateButterfly(butterfly: Butterfly) {

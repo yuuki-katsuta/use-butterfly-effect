@@ -30,7 +30,6 @@ export default function butterflyEffect(
 			if (id === OVERLAY_ENTRY_ID) {
 				return id;
 			}
-			return null;
 		},
 		load(id) {
 			if (id === OVERLAY_ENTRY_ID) {

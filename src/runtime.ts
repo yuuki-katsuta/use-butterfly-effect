@@ -19,6 +19,11 @@ class ButterflyEventEmitter {
 			listener(event);
 		});
 	}
+
+	// 全てのリスナーをクリア
+	clear() {
+		this.listeners.clear();
+	}
 }
 
 export const ButterflyEvents = new ButterflyEventEmitter();
