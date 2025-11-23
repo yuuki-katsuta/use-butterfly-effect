@@ -227,12 +227,8 @@ describe("initOverlay", () => {
 			ButterflyEvents.emit({
 				id: "test-1",
 				componentName: "TestComponent",
-				filePath: "test.tsx",
 				line: 10,
-				column: 5,
 				timestamp: Date.now(),
-				type: "state",
-				nextValue: 42,
 			});
 
 			// Assert: カウントが更新されていることを確認
@@ -243,12 +239,8 @@ describe("initOverlay", () => {
 			ButterflyEvents.emit({
 				id: "test-2",
 				componentName: "TestComponent",
-				filePath: "test.tsx",
 				line: 15,
-				column: 5,
 				timestamp: Date.now(),
-				type: "state",
-				nextValue: 100,
 			});
 
 			// Assert: カウントが2になっていることを確認
