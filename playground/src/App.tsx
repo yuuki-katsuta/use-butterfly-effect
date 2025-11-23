@@ -1,12 +1,14 @@
 import { startTransition, useEffect, useMemo, useState } from "react";
 import viteLogo from "/vite.svg";
 import reactLogo from "./assets/react.svg";
-import "./App.css";
 import { execFn } from "./libs/fn";
+import { useRender } from "./libs/useRender";
 
 // import { useSample } from "./libs/hoge";
 // import { useHuga } from "./libs/huga";
 // import { execFn } from "./libs/fn";
+
+import "./App.css";
 
 function App() {
 	const [count, setCount] = useState(0);
@@ -19,6 +21,8 @@ function App() {
 	useEffect(() => {
 		startTransition(() => callbacks.update(1));
 	}, [callbacks]);
+
+	useRender();
 
 	// useEffect(() => {
 	// 	startTransition(() => callbacks.update(1));
