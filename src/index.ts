@@ -6,7 +6,7 @@ const PLUGIN_NAME = "vite-plugin-butterfly-effect";
 const OVERLAY_ENTRY_ID = "\0butterfly-effect-overlay";
 
 export default function butterflyEffect(
-	options: ButterflyEffectOptions,
+	options: ButterflyEffectOptions = {},
 ): Plugin {
 	const {
 		enabled = process.env.NODE_ENV === "development",
@@ -23,6 +23,9 @@ export default function butterflyEffect(
 			name: PLUGIN_NAME,
 		};
 	}
+
+	// プロジェクトルートを取得
+	const projectRoot = process.cwd();
 
 	return {
 		name: PLUGIN_NAME,
@@ -63,7 +66,7 @@ export default function butterflyEffect(
 
 			// React コードを変換
 			try {
-				const result = transformReactCode(code, {
+				const result = transformReactCode(code, id, projectRoot, {
 					trackEffect,
 					trackState,
 				});
