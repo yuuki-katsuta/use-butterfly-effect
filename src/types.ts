@@ -18,12 +18,8 @@ export interface StateUpdateData {
 export interface ButterflyEvent {
 	id: string;
 	componentName: string;
-	filePath: string;
 	line: number;
-	column: number;
 	timestamp: number;
-	type: "state" | "effect";
-	nextValue?: unknown;
 }
 
 export type ButterflyEventListener = (event: ButterflyEvent) => void;
