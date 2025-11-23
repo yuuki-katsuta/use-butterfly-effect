@@ -1,65 +1,40 @@
-import { useCallback, useEffect, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import viteLogo from "/vite.svg";
 import reactLogo from "./assets/react.svg";
-import { execFn } from "./libs/fn";
-import { useSample } from "./libs/sample";
-import { useExecFn } from "./libs/useExecFn";
-
 import "./App.css";
+import { execFn } from "./libs/fn";
+
+// import { useSample } from "./libs/hoge";
+// import { useHuga } from "./libs/huga";
+// import { execFn } from "./libs/fn";
 
 function App() {
 	const [count, setCount] = useState(0);
 
-	const [a, setA] = useState(0);
-	const [b, setB] = useState(0);
-	const [c, setC] = useState(0);
+	const callbacks = useMemo(
+		() => ({ update: (arg: number) => execFn(() => setCount(arg)) }),
+		[],
+	);
 
-	const updateA = () => {
-		setA(count + 1);
-	};
-
-	const setCountAFn = useCallback(() => {
-		console.log("setCountAFn called");
-		setC(count + 1);
-	}, [count]);
-
-	const setCountBFn = useCallback(() => {
-		setB(count + 1);
-	}, [count]);
-
-	const setCountBFnNested = useCallback(() => {
-		setCountAFn();
-	}, [setCountAFn]);
-
-	// ------ Pattern 1: Regular function called from useEffect ------
-	// biome-ignore lint/correctness/useExhaustiveDependencies: demo purposes
 	useEffect(() => {
-		updateA();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [count]);
+		startTransition(() => callbacks.update(1));
+	}, [callbacks]);
 
-	// // ------ Pattern 2: useCallback called from useEffect ------
-	useEffect(() => {
-		setCountBFn();
-	}, [setCountBFn]);
+	// useEffect(() => {
+	// 	startTransition(() => callbacks.update(1));
+	// }, [count]);
 
-	// ------ Pattern 3: Nested useCallback (function A -> function B -> setState) ------
-	useEffect(() => {
-		setCountBFnNested();
-	}, [setCountBFnNested]);
+	// const { increment, countA } = useSample();
 
-	// ------ Pattern 4: Directly in component body ------
-	const { increment } = useSample();
-	useEffect(() => {
-		increment();
-	}, [increment]);
+	// useEffect(() => {
+	// 	setCount((p) => p + 1);
+	// }, [countA]);
 
-	// ------ Pattern 5: fn wrapper ------
-	useEffect(() => {
-		execFn(setCountAFn);
-	}, [setCountAFn]);
+	// useHuga(useMemo(() => [count], [count]));
 
-	const { countA } = useExecFn();
+	// useSample();
+
+	// useHuga(useMemo(() => [count], [count]));
 
 	return (
 		<>
@@ -76,13 +51,23 @@ function App() {
 				<button type="button" onClick={() => setCount((count) => count + 1)}>
 					Click (count: {count})
 				</button>
-				countA:{countA}
-				<p>a: {a}</p>
-				<p>b: {b}</p>
-				<p>c: {c}</p>
+				{/* <p>countA: {countA}</p>
+				<MyComponent onClick={increment} /> */}
 			</div>
 		</>
 	);
 }
+
+export const MyComponent = ({ onClick }: { onClick: () => void }) => {
+	useEffect(() => {
+		onClick();
+	}, [onClick]);
+
+	return (
+		<button type="button" onClick={onClick}>
+			ボタン
+		</button>
+	);
+};
 
 export default App;
