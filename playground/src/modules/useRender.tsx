@@ -25,5 +25,5 @@ export const useRender = () => {
 		);
 	}, [number]);
 
-	return { render };
+	return { render, number };
 };

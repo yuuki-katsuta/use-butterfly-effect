@@ -16,12 +16,3 @@ export const useSample = () => {
 
 	return { increment, countA };
 };
-
-// export const useSample2 = (deps: any[]) => {
-// 	const [countZ, setCountZ] = useState(0);
-// 	useEffect(() => {
-// 		setCountZ(countZ + 1);
-// 	}, [deps]);
-
-// 	return { countZ };
-// };

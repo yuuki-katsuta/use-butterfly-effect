@@ -1,44 +1,52 @@
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { flushSync } from "react-dom";
 import viteLogo from "/vite.svg";
 import reactLogo from "./assets/react.svg";
-import { execFn } from "./libs/fn";
-import { useRender } from "./libs/useRender";
-
-// import { useSample } from "./libs/hoge";
-// import { useHuga } from "./libs/huga";
-// import { execFn } from "./libs/fn";
-
+import { execFn } from "./modules/fn";
+import { sleep } from "./modules/sleep";
+import { useRender } from "./modules/useRender";
 import "./App.css";
 
 function App() {
-	const [count, setCount] = useState(0);
+	const [countA, setCountA] = useState(0);
+	const [countB, setCountB] = useState(0);
 
 	const callbacks = useMemo(
-		() => ({ update: (arg: number) => execFn(() => setCount(arg)) }),
+		() => ({
+			updateA: (arg: number) =>
+				execFn(() => {
+					flushSync(() => {
+						setCountA((p) => p + arg);
+						setCountB((p) => p + arg);
+						setCountB((p) => p + arg);
+						setCountB((p) => p + arg);
+						setCountB((p) => p + arg);
+						setCountB((p) => p + arg);
+						setCountB((p) => p + arg);
+					});
+				}),
+			updateB: (arg: number) => execFn(() => setCountB((p) => p + arg)),
+		}),
 		[],
 	);
 
+	const { render } = useRender();
+
 	useEffect(() => {
-		startTransition(() => callbacks.update(1));
-	}, [callbacks]);
-
-	useRender();
-
-	// useEffect(() => {
-	// 	startTransition(() => callbacks.update(1));
-	// }, [count]);
-
-	// const { increment, countA } = useSample();
-
-	// useEffect(() => {
-	// 	setCount((p) => p + 1);
-	// }, [countA]);
-
-	// useHuga(useMemo(() => [count], [count]));
-
-	// useSample();
-
-	// useHuga(useMemo(() => [count], [count]));
+		async function fetch() {
+			await sleep();
+			exec();
+			function exec() {
+				execFn(() => {
+					setCountA(1);
+					setCountA(1);
+					setCountA(1);
+					setCountA(1);
+				});
+			}
+		}
+		fetch();
+	}, []);
 
 	return (
 		<>
@@ -52,17 +60,30 @@ function App() {
 			</div>
 			<h1>Nested Function Effect Chain Demo</h1>
 			<div className="card">
-				<button type="button" onClick={() => setCount((count) => count + 1)}>
-					Click (count: {count})
+				<button type="button" onClick={() => callbacks.updateA(1)}>
+					Click (countA: {countA})
 				</button>
-				{/* <p>countA: {countA}</p>
-				<MyComponent onClick={increment} /> */}
+				<button type="button" onClick={() => callbacks.updateB(1)}>
+					Click (countB: {countB})
+				</button>
+				{render()}
+				<p>countA: {countA}</p>
+				<MyComponent
+					onClick={() => {
+						execFn(() => {
+							setCountA(1);
+							setCountA(1);
+							setCountA(1);
+							setCountA(1);
+						});
+					}}
+				/>
 			</div>
 		</>
 	);
 }
 
-export const MyComponent = ({ onClick }: { onClick: () => void }) => {
+const MyComponent = ({ onClick }: { onClick: () => void }) => {
 	useEffect(() => {
 		onClick();
 	}, [onClick]);

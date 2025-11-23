@@ -5,8 +5,5 @@ export const useExecFn = () => {
 		fn();
 	}, []);
 
-	// useEffect(() => {
-	// 	exec();
-	// }, [exec]);
 	return { exec };
 };
