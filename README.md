@@ -5,6 +5,6 @@ A Vite plugin that visualizes React useEffect and state update chains as butterf
 ## TODO
 
 - [ ] reducer対応
-- [ ] インポートされたコールバックの解析: コールバック自体も別ファイルから来る場合
+- [ ] HMR対応
 - [ ] 深いクロスファイル解析: 複数ファイルにまたがるコールバックチェーン
 - [ ] 動的コールバック解析: 条件分岐やループ内のコールバック実行
