@@ -58,7 +58,7 @@ function App() {
 					<img src={reactLogo} className="logo react" alt="React logo" />
 				</a>
 			</div>
-			<h1>Butterfly()Effect</h1>
+			<h1>Butterfly(use)Effect</h1>
 			<div className="card">
 				<button type="button" onClick={() => callbacks.updateA(1)}>
 					Click (countA: {countA})
