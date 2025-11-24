@@ -1,10 +1,8 @@
 # 🦋 Butterfly Effect - Vite Plugin
 
-A Vite plugin that visualizes React useEffect and state update chains as butterfly effects. Transform debugging into a beautiful, enjoyable experience.
-
+A Vite plugin that visualizes React useEffect and state update chains as butterfly effects
 
 https://github.com/user-attachments/assets/1a563ffe-b9af-4d5a-8bb0-303cd58dd037
-
 
 <details><summary>Effect chain demo code</summary>
 
