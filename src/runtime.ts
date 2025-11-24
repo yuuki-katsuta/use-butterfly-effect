@@ -1,3 +1,4 @@
+import { ButterflyContext } from "./butterfly-runtime";
 import type {
 	ButterflyEvent,
 	ButterflyEventListener,
@@ -27,25 +28,12 @@ class ButterflyEventEmitter {
 }
 
 export const ButterflyEvents = new ButterflyEventEmitter();
-let updateCounter = 0;
+export { ButterflyContext };
 
+/**
+ * State更新を追跡
+ * useEffect内からの呼び出しを検知
+ */
 export function __trackStateUpdate(data: StateUpdateData) {
-	const event: ButterflyEvent = {
-		id: `state-${Date.now()}-${updateCounter++}`,
-		componentName: data.componentName,
-		filePath: "",
-		line: data.line,
-		column: 0,
-		timestamp: data.timestamp,
-		type: "state",
-		nextValue: data.value,
-	};
-
-	// イベントを送信
-	ButterflyEvents.emit(event);
-
-	// HMR対応
-	// if (import.meta.hot) {
-	// 	import.meta.hot.send("butterfly:state-update", event);
-	// }
+	ButterflyContext.trackStateUpdate(data);
 }
