@@ -112,5 +112,5 @@ export default App;
 
 ## TODO
 
-- [ ] 因果関係グラフ（Linked List）
+- [ ] 因果関係グラフ（DAG）
 - [ ] useReducer対応
