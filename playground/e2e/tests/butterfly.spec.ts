@@ -103,16 +103,17 @@ test.describe("Butterfly Effect E2E Tests", () => {
 			await waitForStatusPanel(page);
 		});
 
-		test.skip("非同期処理（await後）でもuseEffect内のsetStateは蝶が舞う", async ({
+		test("非同期処理（await後）でもuseEffect内のsetStateは蝶が舞う", async ({
 			page,
 		}) => {
 			const before = await getUpdateCount(page);
 
 			await page.getByTestId("trigger").click();
-			await page.waitForTimeout(700);
+			await page.getByTestId("trigger").click();
+			await page.waitForTimeout(1000);
 
 			const after = await getUpdateCount(page);
-			expect(after - before).toBeGreaterThanOrEqual(2);
+			expect(after - before).toBeGreaterThanOrEqual(3);
 		});
 	});
 
