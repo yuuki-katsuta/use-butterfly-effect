@@ -5,7 +5,6 @@ import traverseDefault from "@babel/traverse";
 import * as t from "@babel/types";
 import type { ButterflyEffectOptions } from "./types";
 
-// ESMとCJSの両方のデフォルトエクスポートに対応
 type TraverseFunction = typeof traverseDefault;
 type GenerateFunction = typeof generateDefault;
 
@@ -20,10 +19,17 @@ type TransformOptions = Pick<
 	"trackEffect" | "trackState"
 >;
 
+// コンポーネントごとのsetter名を追跡
+type SetterInfo = {
+	name: string;
+	originalName: string;
+	line: number;
+};
+
 /**
- * "全てのSetterをラップ + Effectをマーク" アプローチでReactコードを変換
- * - 1. 全てのuseStateのsetterをトラッキングコードでラップ
- * - 2. 全てのuseEffectコールバックを __enterEffect/__exitEffect でラップ
+ * Reactコードを変換
+ * - 1. 全てのuseStateのsetterをトラッキングコードでラップ（effectIdパラメータ付き）
+ * - 2. 全てのuseEffectコールバック内でsetterをバインド版に置換
  */
 export const transformReactCode = (
 	code: string,
@@ -49,15 +55,21 @@ export const transformReactCode = (
 		});
 
 		let hasSetterWrapping = false;
-		let hasEffectWrapping = false;
 		const componentName = detectComponentName(code, ast);
+
+		// コンポーネント内のsetter情報を収集
+		const setterInfos: SetterInfo[] = [];
+		let hasEffectWrapping = false;
 
 		// 1. 全てのuseStateのsetterをラップ
 		traverse(ast, {
 			CallExpression(path) {
 				if (isUseStateCall(path.node)) {
-					wrapUseStateSetter(path, componentName);
-					hasSetterWrapping = true;
+					const info = wrapUseStateSetter(path, componentName);
+					if (info) {
+						setterInfos.push(info);
+						hasSetterWrapping = true;
+					}
 				}
 			},
 		});
@@ -66,8 +78,14 @@ export const transformReactCode = (
 		traverse(ast, {
 			CallExpression(path) {
 				if (isUseEffectCall(path.node)) {
-					wrapUseEffectCallback(path, componentName);
-					hasEffectWrapping = true;
+					const wrapped = wrapUseEffectCallback(
+						path,
+						componentName,
+						setterInfos,
+					);
+					if (wrapped) {
+						hasEffectWrapping = true;
+					}
 				}
 			},
 		});
@@ -78,9 +96,7 @@ export const transformReactCode = (
 		}
 
 		// 変換を行った場合はランタイムインポートを追加
-		if (hasSetterWrapping || hasEffectWrapping) {
-			addRuntimeImports(ast, hasSetterWrapping, hasEffectWrapping);
-		}
+		addRuntimeImports(ast, hasSetterWrapping, hasEffectWrapping);
 
 		const output = generate(ast, {}, code);
 		return { code: output.code, map: null };
@@ -92,7 +108,7 @@ export const transformReactCode = (
 
 /**
  * コードからコンポーネント名を検出
- * Reactコンポーネントらしき関数宣言やconst宣言を探す
+ * Reactコンポーネントの関数宣言やconst宣言を探す
  */
 const detectComponentName = (_code: string, ast: t.File): string => {
 	let componentName = "Unknown";
@@ -170,24 +186,24 @@ const isUseEffectCall = (node: t.CallExpression): boolean => {
  *
  * 変換後:
  *   const [count, __butterfly_original_setCount] = useState(0);
- *   const setCount = (__butterfly_value) => {
- *     __trackStateUpdate({ componentName: "App", line: 11, timestamp: Date.now() });
+ *   const setCount = (__butterfly_value, __butterfly_effectId) => {
+ *     __trackStateUpdate({ componentName: "App", line: 11, timestamp: Date.now(), effectId: __butterfly_effectId });
  *     return __butterfly_original_setCount(__butterfly_value);
  *   };
  */
 const wrapUseStateSetter = (
 	callPath: NodePath<t.CallExpression>,
 	componentName: string,
-) => {
+): SetterInfo | null => {
 	const parent = callPath.parent;
 
 	// const [state, setState] = useState(...) の形式である必要がある
-	if (!t.isVariableDeclarator(parent)) return;
-	if (!t.isArrayPattern(parent.id)) return;
-	if (parent.id.elements.length < 2) return;
+	if (!t.isVariableDeclarator(parent)) return null;
+	if (!t.isArrayPattern(parent.id)) return null;
+	if (parent.id.elements.length < 2) return null;
 
 	const setterElement = parent.id.elements[1];
-	if (!t.isIdentifier(setterElement)) return;
+	if (!t.isIdentifier(setterElement)) return null;
 
 	const setterName = setterElement.name;
 	const originalSetterName = `__butterfly_original_${setterName}`;
@@ -197,18 +213,17 @@ const wrapUseStateSetter = (
 	parent.id.elements[1] = t.identifier(originalSetterName);
 
 	// 2. ラップされたsetter関数を作成
-	// 関数定義をASTで組み立てる
 	const wrappedSetter = t.variableDeclaration("const", [
 		t.variableDeclarator(
-			// 左辺
 			t.identifier(setterName),
-			// 右辺
 			t.arrowFunctionExpression(
-				// パラメータ
-				[t.identifier("__butterfly_value")],
-				// 関数本体
+				// パラメータ: (__butterfly_value, __butterfly_effectId)
+				[
+					t.identifier("__butterfly_value"),
+					t.identifier("__butterfly_effectId"),
+				],
 				t.blockStatement([
-					// __trackStateUpdate({ componentName: "App", line: 11, timestamp: Date.now() }); を構成
+					// __trackStateUpdate({ componentName, line, timestamp, effectId })
 					t.expressionStatement(
 						t.callExpression(t.identifier("__trackStateUpdate"), [
 							t.objectExpression([
@@ -227,10 +242,13 @@ const wrapUseStateSetter = (
 										[],
 									),
 								),
+								t.objectProperty(
+									t.identifier("effectId"),
+									t.identifier("__butterfly_effectId"),
+								),
 							]),
 						]),
 					),
-					// setter関数をreturnする
 					// return __butterfly_original_setCount(__butterfly_value);
 					t.returnStatement(
 						t.callExpression(t.identifier(originalSetterName), [
@@ -242,7 +260,7 @@ const wrapUseStateSetter = (
 		),
 	]);
 
-	// 3. useState宣言の直後にラップされたsetterを挿入（新しいノードを追加）
+	// 3. useState宣言の直後にラップされたsetterを挿入
 	const variableDeclarationPath = callPath.findParent((p) =>
 		p.isVariableDeclaration(),
 	) as NodePath<t.VariableDeclaration> | null;
@@ -250,212 +268,231 @@ const wrapUseStateSetter = (
 	if (variableDeclarationPath) {
 		variableDeclarationPath.insertAfter(wrappedSetter);
 	}
+
+	return {
+		name: setterName,
+		originalName: originalSetterName,
+		line,
+	};
 };
 
 /**
- * useEffectコールバックを ButterflyContext.enter/exit でラップ
+ * useEffectコールバックを__wrapEffectでラップ
  *
  * 変換前:
  *   useEffect(() => {
- *     async function fetch() {
- *       const data = await fetchAPI();
- *       setCount(data);
- *     }
- *     fetch();
+ *     setCount(1);
  *   }, []);
  *
  * 変換後:
- *   useEffect(() => {
- *     const __butterfly_effectId = "Effect_App_Line42";
- *     ButterflyContext.enter(__butterfly_effectId);
- *     try {
- *       async function fetch() {
- *         const data = await fetchAPI();
- *         setCount(data); // ✅ Tracked even after await!
- *       }
- *       fetch();
- *     } finally {}
- *     return () => {
- *       ButterflyContext.exit();
- *     };
- *   }, []);
+ *   useEffect(__wrapEffect("Effect_App_Line5", () => {
+ *     const __butterfly_effectId = "Effect_App_Line5";
+ *     const __bound_setCount = __v => setCount(__v, __butterfly_effectId);
+ *     __bound_setCount(1);
+ *   }), []);
+ *
  */
 const wrapUseEffectCallback = (
 	callPath: NodePath<t.CallExpression>,
 	componentName: string,
-) => {
+	setterInfos: SetterInfo[],
+): boolean => {
 	const callback = callPath.node.arguments[0];
 
 	if (
 		!t.isArrowFunctionExpression(callback) &&
 		!t.isFunctionExpression(callback)
 	) {
-		return;
+		return false;
 	}
 
-	const body = callback.body;
 	const line = callPath.node.loc?.start.line || 0;
-
-	// effectIdを生成
 	const effectId = `Effect_${componentName}_Line${line}`;
 
-	// ブロック文と式の両方に対応
-	let statements: t.Statement[];
+	// effect内で使用されているsetterを検出
+	const usedSetters = findUsedSetters(callback, setterInfos);
 
-	if (t.isBlockStatement(body)) {
-		statements = body.body;
-	} else {
-		// 式をreturn文に変換
-		statements = [t.returnStatement(body)];
+	// Closure Binding: setterにeffectIdをバインド
+	if (usedSetters.length > 0) {
+		// 先にsetter参照を置換してから、bound setter宣言を注入
+		const callbackPath = callPath.get("arguments.0") as NodePath<
+			t.ArrowFunctionExpression | t.FunctionExpression
+		>;
+		replaceSetterReferences(callbackPath, usedSetters);
+
+		// bound setter宣言を先頭に注入
+		injectEffectIdBinding(callback, effectId, usedSetters);
 	}
 
-	// 元のコールバックにcleanup関数が含まれているかチェック
-	let existingCleanupStatements: t.Statement[] = [];
-
-	if (t.isBlockStatement(body)) {
-		const lastStatement = statements[statements.length - 1];
-		if (t.isReturnStatement(lastStatement) && lastStatement.argument) {
-			const returnArg = lastStatement.argument;
-
-			// 既存のcleanup関数の本体を取得
-			if (
-				t.isArrowFunctionExpression(returnArg) ||
-				t.isFunctionExpression(returnArg)
-			) {
-				const cleanupBody = returnArg.body;
-				if (t.isBlockStatement(cleanupBody)) {
-					existingCleanupStatements = cleanupBody.body;
-				} else {
-					// 式の場合は式文に変換
-					existingCleanupStatements = [t.expressionStatement(cleanupBody)];
-				}
-			}
-
-			// 元のreturn文を削除
-			statements = statements.slice(0, -1);
-		}
-	}
-
-	// 新しいcleanup関数を作成（ButterflyContext.exit + 既存cleanup）
-	const cleanupStatements = [
-		t.expressionStatement(
-			t.callExpression(
-				t.memberExpression(
-					t.identifier("ButterflyContext"),
-					t.identifier("exit"),
-				),
-				[],
-			),
-		),
-		...existingCleanupStatements,
-	];
-
-	const cleanupFunction = t.arrowFunctionExpression(
-		[],
-		t.blockStatement(cleanupStatements),
-	);
-
-	// ButterflyContext.enter/exit でラップ
-	const wrappedBody = t.blockStatement([
-		// const __butterfly_effectId = "Effect_ComponentName_Line42";
-		t.variableDeclaration("const", [
-			t.variableDeclarator(
-				t.identifier("__butterfly_effectId"),
-				t.stringLiteral(effectId),
-			),
-		]),
-		// ButterflyContext.enter(__butterfly_effectId);
-		t.expressionStatement(
-			t.callExpression(
-				t.memberExpression(
-					t.identifier("ButterflyContext"),
-					t.identifier("enter"),
-				),
-				[t.identifier("__butterfly_effectId")],
-			),
-		),
-		// try { 元の処理 } finally { queueMicrotask(() => ButterflyContext.clearSync()) }
-		t.tryStatement(
-			t.blockStatement(statements),
-			null,
-			t.blockStatement([
-				// queueMicrotask(() => ButterflyContext.clearSync());
-				t.expressionStatement(
-					t.callExpression(t.identifier("queueMicrotask"), [
-						t.arrowFunctionExpression(
-							[],
-							t.callExpression(
-								t.memberExpression(
-									t.identifier("ButterflyContext"),
-									t.identifier("clearSync"),
-								),
-								[],
-							),
-						),
-					]),
-				),
-			]),
-		),
-		// return () => { ButterflyContext.exit(); 既存cleanup };
-		t.returnStatement(cleanupFunction),
+	// コールバックを__wrapEffectでラップ
+	callPath.node.arguments[0] = t.callExpression(t.identifier("__wrapEffect"), [
+		t.stringLiteral(effectId),
+		callback,
 	]);
 
-	callback.body = wrappedBody;
+	return true;
+};
+
+/**
+ * コールバック内にeffectIdとバインド版setterを注入
+ */
+const injectEffectIdBinding = (
+	callback: t.ArrowFunctionExpression | t.FunctionExpression,
+	effectId: string,
+	usedSetters: SetterInfo[],
+) => {
+	const body = callback.body;
+
+	// 式をブロック文に変換
+	if (!t.isBlockStatement(body)) {
+		callback.body = t.blockStatement([t.returnStatement(body)]);
+	}
+
+	const blockBody = callback.body as t.BlockStatement;
+
+	// effectId定数
+	const effectIdDeclaration = t.variableDeclaration("const", [
+		t.variableDeclarator(
+			t.identifier("__butterfly_effectId"),
+			t.stringLiteral(effectId),
+		),
+	]);
+
+	// バインド版setter
+	const boundSetterDeclarations: t.VariableDeclaration[] = usedSetters.map(
+		(setter) => {
+			const boundName = `__bound_${setter.name}`;
+			return t.variableDeclaration("const", [
+				t.variableDeclarator(
+					t.identifier(boundName),
+					t.arrowFunctionExpression(
+						[t.identifier("__v")],
+						t.callExpression(t.identifier(setter.name), [
+							t.identifier("__v"),
+							t.identifier("__butterfly_effectId"),
+						]),
+					),
+				),
+			]);
+		},
+	);
+
+	// 先頭に挿入
+	blockBody.body.unshift(effectIdDeclaration, ...boundSetterDeclarations);
+};
+
+/**
+ * effect内で使用されているsetterを検出
+ */
+const findUsedSetters = (
+	callback: t.ArrowFunctionExpression | t.FunctionExpression,
+	setterInfos: SetterInfo[],
+): SetterInfo[] => {
+	const usedSetters: SetterInfo[] = [];
+	const setterNames = new Set(setterInfos.map((s) => s.name));
+
+	const checkNode = (node: t.Node) => {
+		if (t.isIdentifier(node) && setterNames.has(node.name)) {
+			const setter = setterInfos.find((s) => s.name === node.name);
+			if (setter && !usedSetters.includes(setter)) {
+				usedSetters.push(setter);
+			}
+		}
+	};
+
+	// ASTを走査してsetter参照を探す
+	const walkNode = (node: t.Node | null | undefined) => {
+		if (!node) return;
+
+		checkNode(node);
+
+		// 子ノードを走査
+		for (const key of Object.keys(node)) {
+			const child = (node as any)[key];
+			if (Array.isArray(child)) {
+				for (const item of child) {
+					if (item && typeof item === "object" && item.type) {
+						walkNode(item);
+					}
+				}
+			} else if (child && typeof child === "object" && child.type) {
+				walkNode(child);
+			}
+		}
+	};
+
+	walkNode(callback.body);
+	return usedSetters;
+};
+
+/**
+ * setter参照をバインド版に置換
+ */
+const replaceSetterReferences = (
+	callbackPath: NodePath<t.ArrowFunctionExpression | t.FunctionExpression>,
+	usedSetters: SetterInfo[],
+) => {
+	const setterNameMap = new Map(
+		usedSetters.map((s) => [s.name, `__bound_${s.name}`]),
+	);
+
+	callbackPath.traverse({
+		Identifier(path) {
+			const boundName = setterNameMap.get(path.node.name);
+			if (!boundName) return;
+
+			// バインド版の宣言自体は置換しない
+			if (t.isVariableDeclarator(path.parent) && path.parent.id === path.node) {
+				return;
+			}
+
+			// オブジェクトプロパティのキーは置換しない
+			if (
+				t.isObjectProperty(path.parent) &&
+				path.parent.key === path.node &&
+				!path.parent.computed
+			) {
+				return;
+			}
+
+			// setter名をバインド版に置換
+			path.node.name = boundName;
+		},
+	});
 };
 
 /**
  * ASTにランタイムインポートを追加
- *
- * 変換前:
- *  import { useState, useEffect } from "react";
- *
- *  function App() {
- *    const [count, setCount] = useState(0);
- *    useEffect(() => {
- *      setCount(1);
- *    }, []);
- *  }
- *
- * 変換後:
- *  import { __trackStateUpdate, __enterEffect, __exitEffect } from "vite-plugin-butterfly-effect/runtime";
- *	import { useState, useEffect } from "react";
- *
- *	function App() {
- *		const [count, __butterfly_original_setCount] = useState(0);
- *		const setCount = (__butterfly_value) => {
- *			__trackStateUpdate({ ... });  // importが必要
- *			return __butterfly_original_setCount(__butterfly_value);
- *		};
- *
- *		useEffect(() => {
- *			__enterEffect();  // importが必要
- *			try {
- *				setCount(1);
- *			} finally {
- *				__exitEffect();  // importが必要
- *			}
- *		}, []);
- *	}
  */
 const addRuntimeImports = (
 	ast: t.File,
 	hasSetterWrapping: boolean,
 	hasEffectWrapping: boolean,
 ) => {
-	const imports: t.Identifier[] = [];
+	const imports: t.ImportSpecifier[] = [];
 
 	if (hasSetterWrapping) {
-		imports.push(t.identifier("__trackStateUpdate"));
+		imports.push(
+			t.importSpecifier(
+				t.identifier("__trackStateUpdate"),
+				t.identifier("__trackStateUpdate"),
+			),
+		);
 	}
 
 	if (hasEffectWrapping) {
-		imports.push(t.identifier("ButterflyContext"));
+		imports.push(
+			t.importSpecifier(
+				t.identifier("__wrapEffect"),
+				t.identifier("__wrapEffect"),
+			),
+		);
 	}
 
 	if (imports.length === 0) return;
 
 	const importDeclaration = t.importDeclaration(
-		imports.map((id) => t.importSpecifier(id, id)),
+		imports,
 		t.stringLiteral("vite-plugin-butterfly-effect/runtime"),
 	);
 

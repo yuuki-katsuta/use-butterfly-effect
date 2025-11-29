@@ -1,4 +1,7 @@
-import { ButterflyContext } from "./butterfly-runtime";
+import {
+	__wrapEffect,
+	trackStateUpdate as _trackStateUpdate,
+} from "./butterfly-runtime";
 import type {
 	ButterflyEvent,
 	ButterflyEventListener,
@@ -28,12 +31,12 @@ class ButterflyEventEmitter {
 }
 
 export const ButterflyEvents = new ButterflyEventEmitter();
-export { ButterflyContext };
+export { __wrapEffect };
 
 /**
  * State更新を追跡
  * useEffect内からの呼び出しを検知
  */
 export function __trackStateUpdate(data: StateUpdateData) {
-	ButterflyContext.trackStateUpdate(data);
+	_trackStateUpdate(data);
 }

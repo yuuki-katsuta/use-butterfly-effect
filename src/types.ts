@@ -12,7 +12,8 @@ export interface StateUpdateData {
 	componentName: string;
 	line: number;
 	timestamp: number;
-	value: unknown;
+	value?: unknown;
+	effectId?: string;
 }
 
 export interface ButterflyEvent {
