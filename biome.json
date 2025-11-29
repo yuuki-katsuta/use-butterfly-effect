@@ -21,6 +21,9 @@
 			"suspicious": {
 				"noExplicitAny": "off"
 			},
+			"a11y": {
+				"useValidAnchor": "off"
+			},
 			"correctness": {
 				"noUnusedImports": "error",
 				"noUnusedVariables": "warn"
