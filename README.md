@@ -112,4 +112,5 @@ export default App;
 
 ## TODO
 
-- [ ] Reactive Signals 方式への移行
+- [ ] 因果関係グラフ（Linked List）
+- [ ] useReducer対応
