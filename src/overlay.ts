@@ -188,7 +188,7 @@ export function initOverlay(options: ButterflyEffectOptions) {
     z-index: 999999;
   `;
 
-	function initOverlay() {
+	function setupCanvas() {
 		const canvas = new ButterflyCanvas(container, options);
 
 		if (options.showStatus) {
@@ -237,10 +237,10 @@ export function initOverlay(options: ButterflyEffectOptions) {
 		// DOMの解釈(DOMツリーの構築)された時に発火
 		document.addEventListener("DOMContentLoaded", () => {
 			document.body.appendChild(container);
-			initOverlay();
+			setupCanvas();
 		});
 	} else {
 		document.body.appendChild(container);
-		initOverlay();
+		setupCanvas();
 	}
 }
