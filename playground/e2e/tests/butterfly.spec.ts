@@ -97,6 +97,19 @@ test.describe("Butterfly Effect E2E Tests", () => {
 		});
 	});
 
+	test.describe("NoBlockScopeEffect", () => {
+		test.beforeEach(async ({ page }) => {
+			await page.goto("/#NoBlockScopeEffect");
+			await waitForStatusPanel(page);
+		});
+
+		test("初回レンダリング時、蝶が舞うこと", async ({ page }) => {
+			await page.waitForTimeout(1000);
+			const count = await getUpdateCount(page);
+			expect(count).toBe(2);
+		});
+	});
+
 	test.describe("AsyncEffect - 蝶が舞うケース（非同期）", () => {
 		test.beforeEach(async ({ page }) => {
 			await page.goto("/#AsyncEffect");
@@ -145,6 +158,28 @@ test.describe("Butterfly Effect E2E Tests", () => {
 			const after = await getUpdateCount(page);
 			// 親再レンダリング → 関数再生成 → 子useEffect発火 → 蝶が舞う
 			expect(after - before).toBeGreaterThanOrEqual(1);
+		});
+	});
+
+	test.describe("HooksEffect", () => {
+		test.beforeEach(async ({ page }) => {
+			await page.goto("/#HooksEffect");
+			await waitForStatusPanel(page);
+		});
+
+		test("初回レンダリング時、蝶が舞うこと", async ({ page }) => {
+			await page.waitForTimeout(1000);
+			const count = await getUpdateCount(page);
+
+			expect(count).toBe(2);
+
+			await page.getByTestId("trigger").click();
+			await page.getByTestId("trigger").click();
+			await page.waitForTimeout(1000);
+
+			const after = await getUpdateCount(page);
+			// ボタンクリック時、,蝶が舞わないこと
+			expect(after).toBe(2);
 		});
 	});
 

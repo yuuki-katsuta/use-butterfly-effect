@@ -3,15 +3,19 @@ import { createRoot } from "react-dom/client";
 import { AsyncEffect } from "./fixtures/AsyncEffect";
 import { BasicUseEffect } from "./fixtures/BasicUseEffect";
 import { DependencyTrap } from "./fixtures/DependencyTrap";
+import { HooksEffect } from "./fixtures/Hooks";
 import { NestedEffect } from "./fixtures/NestedEffect";
+import { NoBlockScopeEffect } from "./fixtures/NOBlockScopeEffect";
 import { NoEffect } from "./fixtures/NoEffect";
 import { UseCallbackMemo } from "./fixtures/UseCallbackMemo";
 
 const fixtures: Record<string, React.FC> = {
 	BasicUseEffect,
 	NoEffect,
+	NoBlockScopeEffect,
 	AsyncEffect,
 	DependencyTrap,
+	HooksEffect,
 	NestedEffect,
 	UseCallbackMemo,
 };
