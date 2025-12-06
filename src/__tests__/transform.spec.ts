@@ -30,11 +30,8 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
-		expect(result?.code).toContain('componentName: "App"');
-
-		const trackingCalls = result?.code.match(/__trackStateUpdate\(/g);
-		expect(trackingCalls).toHaveLength(1);
+		expect(result?.code).toContain("__wrapSetter");
+		expect(result?.code).toContain('"App"');
 	});
 
 	test("アロー関数コンポーネントを処理する", () => {
@@ -55,8 +52,8 @@ const MyComponent = () => {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
-		expect(result?.code).toContain('componentName: "MyComponent"');
+		expect(result?.code).toContain("__wrapSetter");
+		expect(result?.code).toContain('"MyComponent"');
 	});
 
 	test("複数のuseStateフックを処理する", () => {
@@ -79,9 +76,9 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		// 各setStateラッパーに対して2つのトラッキング呼び出しがあるべき
-		const trackingCalls = result?.code.match(/__trackStateUpdate/g);
+		const trackingCalls = result?.code.match(/__wrapSetter/g);
 		expect(trackingCalls?.length).toBeGreaterThanOrEqual(2);
 	});
 
@@ -103,8 +100,8 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
-		expect(result?.code).toContain('componentName: "App"');
+		expect(result?.code).toContain("__wrapSetter");
+		expect(result?.code).toContain('"App"');
 	});
 
 	test("useEffect外のuseCallback内のsetState呼び出しも変換する", () => {
@@ -129,7 +126,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 	});
 
 	test("trackStateがfalseの場合はnullを返す", () => {
@@ -185,7 +182,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 	});
 
 	test("TypeScriptのジェネリック型を処理する", () => {
@@ -206,7 +203,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 	});
 
 	test("useCallback内のsetState呼び出しを変換する", () => {
@@ -232,7 +229,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		expect(result?.code).toMatch(/setB.*count.*1/);
 	});
 
@@ -260,7 +257,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		expect(result?.code).toContain("setData");
 	});
 
@@ -287,7 +284,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 	});
 
 	test("ネストした関数呼び出し（2階層）内のsetStateを追跡する", () => {
@@ -317,7 +314,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 	});
 
 	test("ネストしたuseCallback呼び出し内のsetStateを追跡する", () => {
@@ -347,7 +344,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 	});
 
 	test("深くネストした関数呼び出し（3階層以上）内のsetStateを追跡する", () => {
@@ -372,7 +369,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 	});
 
 	test("混合関数タイプ（通常関数+useCallback）内のsetStateを追跡する", () => {
@@ -399,7 +396,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 	});
 
 	test("setStateを使用しないuseEffectは変換しない", () => {
@@ -421,7 +418,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		expect(result?.code).toContain("__butterfly_original_setValue");
 		expect(result?.code).not.toContain("__bound_setValue");
 	});
@@ -450,7 +447,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 	});
 
 	test("カスタムフック内のuseCallback内のsetStateを追跡する（クロスコンポーネントエフェクトチェーン用）", () => {
@@ -471,7 +468,7 @@ export const useSample = () => {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 	});
 
 	test("カスタムフック内の通常関数内のsetStateを追跡する（useCallbackなしでも）", () => {
@@ -492,7 +489,7 @@ export const useSample = () => {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		expect(result?.code).toContain("setCountA");
 	});
 
@@ -525,10 +522,10 @@ export const useExecFn = () => {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 
-		// __trackStateUpdateの注入回数をカウント
-		const trackingCalls = result?.code.match(/__trackStateUpdate/g);
+		// __wrapSetterの注入回数をカウント
+		const trackingCalls = result?.code.match(/__wrapSetter/g);
 		expect(trackingCalls?.length).toBeLessThanOrEqual(2);
 	});
 
@@ -558,7 +555,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		expect(result?.code).toContain("setB");
 	});
 
@@ -588,7 +585,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		expect(result?.code).toContain("setB");
 	});
 
@@ -624,9 +621,9 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		// setAとsetBの両方を追跡
-		const trackingCalls = result?.code.match(/__trackStateUpdate/g);
+		const trackingCalls = result?.code.match(/__wrapSetter/g);
 		expect(trackingCalls?.length).toBeGreaterThanOrEqual(2);
 	});
 
@@ -648,10 +645,10 @@ export const useSample = () => {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		expect(result?.code).toContain("__butterfly_original_setCountA");
 		expect(result?.code).toMatch(
-			/const setCountA = \(__butterfly_value, __butterfly_effectId\)/,
+			/const setCountA = __wrapSetter\(__butterfly_original_setCountA/,
 		);
 	});
 
@@ -723,7 +720,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		expect(result?.code).toContain("__butterfly_original_setCount");
 		expect(result?.code).toContain("__bound_setCount");
 	});
@@ -747,7 +744,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		expect(result?.code).toContain("__butterfly_original_setCount");
 		expect(result?.code).toContain("__bound_setCount");
 	});
@@ -771,7 +768,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		expect(result?.code).toContain("__butterfly_original_setCount");
 		expect(result?.code).toContain("__bound_setCount");
 	});
@@ -794,7 +791,7 @@ export const useSample = () => {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		expect(result?.code).toContain("setCount");
 	});
 
@@ -822,7 +819,7 @@ function App() {
 
 		expect(result).not.toBeNull();
 		// setterをラップ
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		expect(result?.code).toContain("__butterfly_original_setCountA");
 		// Closure Bindingで、バインドされたsetterがクロージャでeffectIdをキャプチャする
 		expect(result?.code).toContain("__butterfly_effectId");
@@ -854,7 +851,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		expect(result?.code).toContain("__butterfly_effectId");
 		expect(result?.code).toContain("__bound_setData");
 		expect(result?.code).toMatch(/async.*await.*__bound_setData/s);
@@ -881,7 +878,7 @@ function App() {
 		const result = transform(code);
 
 		expect(result).not.toBeNull();
-		expect(result?.code).toContain("__trackStateUpdate");
+		expect(result?.code).toContain("__wrapSetter");
 		expect(result?.code).toContain("__butterfly_effectId");
 		expect(result?.code).toContain("__bound_setValue");
 	});

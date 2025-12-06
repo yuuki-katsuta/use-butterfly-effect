@@ -89,6 +89,35 @@ export function getCurrentEffectId(): string | null {
 // State Tracking
 // ============================================
 
+// Setter ラッパーのキャッシュ（参照安定化用）
+type SetterFn = (value: unknown) => void;
+type WrappedSetterFn = (value: unknown, effectId?: string) => void;
+const setterCache = new WeakMap<SetterFn, WrappedSetterFn>();
+
+/**
+ * useState の setter をラップ（WeakMap でキャッシュして参照を安定化）
+ */
+export function __wrapSetter(
+	original: SetterFn,
+	componentName: string,
+	line: number,
+): WrappedSetterFn {
+	let wrapped = setterCache.get(original);
+	if (!wrapped) {
+		wrapped = (value: unknown, effectId?: string) => {
+			__trackStateUpdate({
+				componentName,
+				line,
+				timestamp: Date.now(),
+				effectId,
+			});
+			return original(value);
+		};
+		setterCache.set(original, wrapped);
+	}
+	return wrapped;
+}
+
 /**
  * State更新を追跡
  * - Closure BindingでeffectIdが渡された場合はそれを使用

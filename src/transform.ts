@@ -186,10 +186,9 @@ const isUseEffectCall = (node: t.CallExpression): boolean => {
  *
  * 変換後:
  *   const [count, __butterfly_original_setCount] = useState(0);
- *   const setCount = (__butterfly_value, __butterfly_effectId) => {
- *     __trackStateUpdate({ componentName: "App", line: 11, timestamp: Date.now(), effectId: __butterfly_effectId });
- *     return __butterfly_original_setCount(__butterfly_value);
- *   };
+ *   const setCount = __wrapSetter(__butterfly_original_setCount, "App", 11);
+ *
+ * __wrapSetter は WeakMap でキャッシュするため、setter の参照が安定する
  */
 const wrapUseStateSetter = (
 	callPath: NodePath<t.CallExpression>,
@@ -212,51 +211,16 @@ const wrapUseStateSetter = (
 	// 1. 分割代入パターン内のsetterをリネーム
 	parent.id.elements[1] = t.identifier(originalSetterName);
 
-	// 2. ラップされたsetter関数を作成
+	// 2. __wrapSetter を使ってラップされたsetterを作成
+	// const setCount = __wrapSetter(__butterfly_original_setCount, "App", 11);
 	const wrappedSetter = t.variableDeclaration("const", [
 		t.variableDeclarator(
 			t.identifier(setterName),
-			t.arrowFunctionExpression(
-				// パラメータ: (__butterfly_value, __butterfly_effectId)
-				[
-					t.identifier("__butterfly_value"),
-					t.identifier("__butterfly_effectId"),
-				],
-				t.blockStatement([
-					// __trackStateUpdate({ componentName, line, timestamp, effectId })
-					t.expressionStatement(
-						t.callExpression(t.identifier("__trackStateUpdate"), [
-							t.objectExpression([
-								t.objectProperty(
-									t.identifier("componentName"),
-									t.stringLiteral(componentName),
-								),
-								t.objectProperty(t.identifier("line"), t.numericLiteral(line)),
-								t.objectProperty(
-									t.identifier("timestamp"),
-									t.callExpression(
-										t.memberExpression(
-											t.identifier("Date"),
-											t.identifier("now"),
-										),
-										[],
-									),
-								),
-								t.objectProperty(
-									t.identifier("effectId"),
-									t.identifier("__butterfly_effectId"),
-								),
-							]),
-						]),
-					),
-					// return __butterfly_original_setCount(__butterfly_value);
-					t.returnStatement(
-						t.callExpression(t.identifier(originalSetterName), [
-							t.identifier("__butterfly_value"),
-						]),
-					),
-				]),
-			),
+			t.callExpression(t.identifier("__wrapSetter"), [
+				t.identifier(originalSetterName),
+				t.stringLiteral(componentName),
+				t.numericLiteral(line),
+			]),
 		),
 	]);
 
@@ -474,8 +438,8 @@ const addRuntimeImports = (
 	if (hasSetterWrapping) {
 		imports.push(
 			t.importSpecifier(
-				t.identifier("__trackStateUpdate"),
-				t.identifier("__trackStateUpdate"),
+				t.identifier("__wrapSetter"),
+				t.identifier("__wrapSetter"),
 			),
 		);
 	}
