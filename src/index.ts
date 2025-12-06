@@ -25,7 +25,6 @@ export default function butterflyEffect(
 		};
 	}
 
-	// プロジェクトルートを取得
 	const projectRoot = process.cwd();
 
 	return {
@@ -66,7 +65,6 @@ export default function butterflyEffect(
 				return null;
 			}
 
-			// React コードを変換
 			try {
 				const result = transformReactCode(code, id, projectRoot, {
 					trackEffect,
