@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AsyncEffect } from "./fixtures/AsyncEffect";
 import { BasicUseEffect } from "./fixtures/BasicUseEffect";
+import { CachedSetter } from "./fixtures/CachedSetter";
 import { DependencyTrap } from "./fixtures/DependencyTrap";
 import { HooksEffect } from "./fixtures/Hooks";
 import { NestedEffect } from "./fixtures/NestedEffect";
@@ -20,6 +21,7 @@ const fixtures: Record<string, React.FC> = {
 	NestedEffect,
 	UseCallbackMemo,
 	SetStateOnly,
+	CachedSetter,
 };
 
 export const App = () => {

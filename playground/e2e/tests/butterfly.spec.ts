@@ -97,6 +97,28 @@ test.describe("Butterfly Effect E2E Tests", () => {
 		});
 	});
 
+	test.describe("CachedSetter", () => {
+		test.beforeEach(async ({ page }) => {
+			await page.goto("/#CachedSetter");
+			await waitForStatusPanel(page);
+		});
+
+		test("useStateのsetterはキャッシュされ、再生成されないこと", async ({
+			page,
+		}) => {
+			await page.waitForTimeout(1000);
+			const count = await getUpdateCount(page);
+
+			await page.waitForTimeout(1000);
+			await page.getByTestId("trigger").click();
+			await page.getByTestId("trigger").click();
+			await page.getByTestId("trigger").click();
+
+			// 初回レンダリング時の2回のみの実行
+			expect(count).toBe(2);
+		});
+	});
+
 	test.describe("SetStateOnly", () => {
 		test.beforeEach(async ({ page }) => {
 			await page.goto("/#SetStateOnly");
