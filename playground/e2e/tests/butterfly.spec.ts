@@ -110,9 +110,9 @@ test.describe("Butterfly Effect E2E Tests", () => {
 			const count = await getUpdateCount(page);
 
 			await page.waitForTimeout(1000);
-			await page.getByTestId("trigger").click();
-			await page.getByTestId("trigger").click();
-			await page.getByTestId("trigger").click();
+			await page.getByTestId("increment").click();
+			await page.getByTestId("increment").click();
+			await page.getByTestId("increment").click();
 
 			// 初回レンダリング時の2回のみの実行
 			expect(count).toBe(2);

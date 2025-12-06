@@ -10,7 +10,7 @@ export function CachedSetter() {
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: test
 	useEffect(() => {
-		setCount(1);
+		setCount((p) => p + 1);
 	}, [setCount]);
 
 	return (
