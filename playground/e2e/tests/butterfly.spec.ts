@@ -97,6 +97,19 @@ test.describe("Butterfly Effect E2E Tests", () => {
 		});
 	});
 
+	test.describe("SetStateOnly", () => {
+		test.beforeEach(async ({ page }) => {
+			await page.goto("/#SetStateOnly");
+			await waitForStatusPanel(page);
+		});
+
+		test("初回レンダリング時、蝶が舞うこと", async ({ page }) => {
+			await page.waitForTimeout(1000);
+			const count = await getUpdateCount(page);
+			expect(count).toBe(2);
+		});
+	});
+
 	test.describe("NoBlockScopeEffect", () => {
 		test.beforeEach(async ({ page }) => {
 			await page.goto("/#NoBlockScopeEffect");

@@ -7,6 +7,7 @@ import { HooksEffect } from "./fixtures/Hooks";
 import { NestedEffect } from "./fixtures/NestedEffect";
 import { NoBlockScopeEffect } from "./fixtures/NOBlockScopeEffect";
 import { NoEffect } from "./fixtures/NoEffect";
+import { SetStateOnly } from "./fixtures/SetStateOnly";
 import { UseCallbackMemo } from "./fixtures/UseCallbackMemo";
 
 const fixtures: Record<string, React.FC> = {
@@ -18,6 +19,7 @@ const fixtures: Record<string, React.FC> = {
 	HooksEffect,
 	NestedEffect,
 	UseCallbackMemo,
+	SetStateOnly,
 };
 
 export const App = () => {
