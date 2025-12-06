@@ -1,9 +1,10 @@
-import type { Plugin } from "rolldown";
+import type { Plugin } from "vite";
 import { transformReactCode } from "./transform.js";
 import type { ButterflyEffectOptions } from "./types";
 
 const PLUGIN_NAME = "vite-plugin-butterfly-effect";
-const OVERLAY_ENTRY_ID = "\0butterfly-effect-overlay";
+const OVERLAY_PATH = "/@butterfly-effect-overlay";
+const OVERLAY_VIRTUAL_ID = "\0butterfly-effect-overlay";
 
 export default function butterflyEffect(
 	options: ButterflyEffectOptions = {},
@@ -30,35 +31,36 @@ export default function butterflyEffect(
 	return {
 		name: PLUGIN_NAME,
 		resolveId(id) {
-			if (id === OVERLAY_ENTRY_ID) {
-				return id;
+			if (id === OVERLAY_PATH) {
+				return OVERLAY_VIRTUAL_ID;
 			}
 		},
 		load(id) {
-			if (id === OVERLAY_ENTRY_ID) {
+			if (id === OVERLAY_VIRTUAL_ID) {
 				return `
-          import { initOverlay } from 'vite-plugin-butterfly-effect/overlay';
+					import { initOverlay } from 'vite-plugin-butterfly-effect/overlay';
 
-          initOverlay({
-            theme: '${theme}',
-            showStatus: ${showStatus},
-            animationSpeed: ${animationSpeed},
-            maxButterflies: ${maxButterflies},
-            trackEffect: ${trackEffect},
-            trackState: ${trackState},
-          });
-        `;
+					initOverlay({
+						theme: '${theme}',
+						showStatus: ${showStatus},
+						animationSpeed: ${animationSpeed},
+						maxButterflies: ${maxButterflies},
+						trackEffect: ${trackEffect},
+						trackState: ${trackState},
+					});
+				`;
 			}
 		},
+		transformIndexHtml() {
+			return [
+				{
+					tag: "script",
+					attrs: { type: "module", src: OVERLAY_PATH },
+					injectTo: "head",
+				},
+			];
+		},
 		transform(code, id) {
-			// main.tsx または main.ts に対してオーバーレイ初期化コードを注入
-			if (id.match(/\/main\.(ts|tsx|js|jsx)$/)) {
-				return {
-					code: `import '${OVERLAY_ENTRY_ID}';\n${code}`,
-					map: null,
-				};
-			}
-
 			// 対象外ファイルはスキップ
 			if (!id.match(/\.(jsx|tsx|ts|js)$/)) {
 				return null;
