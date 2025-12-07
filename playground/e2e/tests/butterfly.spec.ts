@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * ステータスパネルの State Updates カウンターを取得
+ * ステータスパネルの setState in Effect カウンターを取得
  */
 async function getUpdateCount(
 	page: import("@playwright/test").Page,
@@ -305,7 +305,7 @@ test.describe("Butterfly Effect E2E Tests", () => {
 			const panel = page.locator("#butterfly-effect-status-panel");
 			await expect(panel).toBeVisible();
 			await expect(panel).toContainText("Butterfly Effect");
-			await expect(panel).toContainText("State Updates:");
+			await expect(panel).toContainText("setState in Effect:");
 			await expect(panel).toContainText("Active Butterflies:");
 		});
 	});

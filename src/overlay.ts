@@ -212,7 +212,7 @@ export function initOverlay(options: ButterflyEffectOptions) {
         <div style="font-weight: bold; margin-bottom: 10px; font-size: 14px;">
           🦋 Butterfly Effect
         </div>
-        <div>State Updates: <span id="butterfly-update-count">0</span></div>
+        <div>setState in Effect: <span id="butterfly-update-count">0</span></div>
         <div>Active Butterflies: <span id="butterfly-active-count">0</span></div>
       `;
 			container.appendChild(panel);

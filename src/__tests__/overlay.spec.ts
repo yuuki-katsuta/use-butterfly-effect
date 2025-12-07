@@ -121,7 +121,7 @@ describe("initOverlay", () => {
 			);
 			expect(statusPanel).not.toBeNull();
 			expect(statusPanel?.textContent).toContain("🦋 Butterfly Effect");
-			expect(statusPanel?.textContent).toContain("State Updates:");
+			expect(statusPanel?.textContent).toContain("setState in Effect:");
 			expect(statusPanel?.textContent).toContain("Active Butterflies:");
 		});
 
