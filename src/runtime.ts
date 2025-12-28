@@ -91,7 +91,7 @@ export function getCurrentEffectId(): string | null {
 
 // Setter ラッパーのキャッシュ（参照安定化用）
 type SetterFn = (value: unknown) => void;
-type WrappedSetterFn = (value: unknown, effectId?: string) => void;
+type WrappedSetterFn = (value: unknown, effectId: string) => void;
 const setterCache = new WeakMap<SetterFn, WrappedSetterFn>();
 
 /**
@@ -104,7 +104,7 @@ export function __wrapSetter(
 ): WrappedSetterFn {
 	let wrapped = setterCache.get(original);
 	if (!wrapped) {
-		wrapped = (value: unknown, effectId?: string) => {
+		wrapped = (value: unknown, effectId: string) => {
 			__trackStateUpdate({
 				componentName,
 				line,
@@ -120,20 +120,14 @@ export function __wrapSetter(
 
 /**
  * State更新を追跡
- * - Closure BindingでeffectIdが渡された場合はそれを使用
- * - 渡されなかった場合はcurrentEffectIdからフォールバック
  */
 export function __trackStateUpdate(data: StateUpdateData): void {
-	const effectId = data.effectId ?? currentEffectId;
-
-	if (!effectId) return;
-
 	const event = {
 		id: `state-${Date.now()}-${updateCounter++}`,
 		componentName: data.componentName,
 		line: data.line,
 		timestamp: data.timestamp,
-		effectId,
+		effectId: data.effectId,
 	};
 
 	ButterflyEvents.emit(event);

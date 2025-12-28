@@ -13,7 +13,7 @@ export interface StateUpdateData {
 	line: number;
 	timestamp: number;
 	value?: unknown;
-	effectId?: string;
+	effectId: string;
 }
 
 export interface ButterflyEvent {
