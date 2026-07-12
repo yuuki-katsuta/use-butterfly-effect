@@ -12,24 +12,37 @@ describe("initOverlay", () => {
 		ButterflyEvents.clear();
 
 		// Mock canvas context for testing
-		// happy-dom doesn't fully support canvas 2D context
+		// happy-dom doesn't fully support canvas 2D context.
+		// 個別メソッドを列挙する方式だと描画実装の変更のたびにモックが
+		// 壊れるため、任意のメソッド呼び出しとプロパティ代入を受け付ける
+		// Proxyで代用する
 		const mockGetContext = vi.fn((contextType: string) => {
 			if (contextType === "2d") {
-				return {
-					clearRect: vi.fn(),
-					save: vi.fn(),
-					restore: vi.fn(),
-					translate: vi.fn(),
-					fillText: vi.fn(),
-					globalAlpha: 1,
-					font: "",
-					textAlign: "center",
-					textBaseline: "middle",
-					canvas: {
-						width: window.innerWidth,
-						height: window.innerHeight,
+				const gradient = { addColorStop: vi.fn() };
+				const methods = new Map<string | symbol, unknown>();
+				return new Proxy(
+					{},
+					{
+						get(_target, prop) {
+							if (prop === "canvas") {
+								return { width: window.innerWidth, height: window.innerHeight };
+							}
+							if (
+								prop === "createLinearGradient" ||
+								prop === "createRadialGradient"
+							) {
+								return () => gradient;
+							}
+							if (!methods.has(prop)) {
+								methods.set(prop, vi.fn());
+							}
+							return methods.get(prop);
+						},
+						set() {
+							return true;
+						},
 					},
-				} as unknown as CanvasRenderingContext2D;
+				) as unknown as CanvasRenderingContext2D;
 			}
 			return null;
 		});
