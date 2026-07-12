@@ -79,7 +79,8 @@ class ButterflyCanvas {
 			targetY,
 			heading: Math.atan2(targetY - y, targetX - x),
 			flapPhase: Math.random() * TWO_PI,
-			flapSpeed: 0.28 + Math.random() * 0.14,
+			// モルフォは大きな翅でゆったり羽ばたく。速いとセセリチョウになる
+			flapSpeed: 0.16 + Math.random() * 0.1,
 			speed: 2.2 + Math.random() * 2,
 			size: 16 + Math.random() * 12,
 			hue: this.getBaseHue(event.componentName),
@@ -133,7 +134,8 @@ class ButterflyCanvas {
 		for (let i = 0; i < componentName.length; i++) {
 			hash = componentName.charCodeAt(i) + ((hash << 5) - hash);
 		}
-		return 200 + (Math.abs(hash) % 40);
+		// モルフォブルーの帯域に収める。コンポーネント差は色味の揺らぎ程度
+		return 200 + (Math.abs(hash) % 14);
 	}
 
 	updateActiveButterflyCount() {
@@ -235,8 +237,16 @@ class ButterflyCanvas {
 	private drawButterfly(butterfly: Butterfly, chaos: number) {
 		const { x, y, size, opacity, heading, flapPhase } = butterfly;
 		// 蝶が増えるほど青(平穏)から紫紅(嵐の予兆)へ寄せる
-		const hue = butterfly.hue + chaos * 90;
+		const hue = butterfly.hue + chaos * 80;
 		const ctx = this.ctx;
+
+		// |cos|そのままだと閉じている時間が長く見えるため、べき乗で
+		// 開いた状態に滞留させてモルフォらしい滑空感を出す
+		const fold = Math.abs(Math.cos(flapPhase));
+		const spread = 0.18 + 0.82 * fold ** 0.6;
+		// 構造色は翅を開いた時だけ現れる。青(表)⇔褐色(裏)の明滅が
+		// モルフォの署名なので、開き具合を鋭くマッピングする
+		const iri = fold ** 1.6;
 
 		ctx.save();
 		ctx.globalAlpha = opacity;
@@ -244,65 +254,134 @@ class ButterflyCanvas {
 		ctx.rotate(heading + Math.PI / 2);
 		ctx.scale(size, size);
 
-		const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 1.4);
-		glow.addColorStop(0, `hsla(${hue}, 90%, 70%, 0.28)`);
-		glow.addColorStop(1, `hsla(${hue}, 90%, 70%, 0)`);
+		const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 1.5);
+		glow.addColorStop(0, `hsla(${hue}, 95%, 65%, ${0.06 + 0.26 * iri})`);
+		glow.addColorStop(1, `hsla(${hue}, 95%, 65%, 0)`);
 		ctx.fillStyle = glow;
 		ctx.beginPath();
-		ctx.arc(0, 0, 1.4, 0, TWO_PI);
+		ctx.arc(0, 0, 1.5, 0, TWO_PI);
 		ctx.fill();
 
-		// cosで左右の翼を同位相に折りたたみ、真上から見た羽ばたきに見せる
-		const spread = 0.22 + 0.78 * Math.abs(Math.cos(flapPhase));
+		const marginColor = "hsla(24, 32%, 10%, 0.96)";
 
 		for (const side of [-1, 1]) {
 			ctx.save();
 			ctx.scale(side * spread, 1);
 
-			const wing = ctx.createLinearGradient(0, -0.6, 1.1, 0.4);
-			wing.addColorStop(0, `hsla(${hue}, 85%, 72%, 0.95)`);
-			wing.addColorStop(1, `hsla(${hue + 30}, 75%, 48%, 0.9)`);
-			ctx.fillStyle = wing;
-
-			ctx.beginPath();
-			ctx.moveTo(0.04, -0.12);
-			ctx.bezierCurveTo(0.45, -1.05, 1.2, -0.72, 0.92, -0.12);
-			ctx.bezierCurveTo(0.78, 0.02, 0.35, 0.02, 0.04, -0.06);
-			ctx.closePath();
+			// 縁取り(黒褐色)で全形を塗ってから、翅の付け根を原点に
+			// 縮小した同じパスを重ねる。原点相似なので縁の幅が
+			// 翅端ほど広がり、モルフォの暗色マージンの形になる
+			ctx.fillStyle = marginColor;
+			this.traceForewing(ctx);
+			ctx.fill();
+			this.traceHindwing(ctx);
 			ctx.fill();
 
-			ctx.beginPath();
-			ctx.moveTo(0.04, 0.0);
-			ctx.bezierCurveTo(0.5, 0.06, 0.72, 0.48, 0.42, 0.82);
-			ctx.bezierCurveTo(0.18, 1.0, 0.03, 0.5, 0.02, 0.08);
-			ctx.closePath();
+			ctx.save();
+			ctx.scale(0.86, 0.86);
+
+			// 翅裏の褐色を常に敷き、その上に構造色の青を開き具合の
+			// アルファで重ねる。HSLの色相補間だと褐色→青の中間で
+			// 緑を経由して濁るため、2層のクロスフェードにする
+			const underside = ctx.createRadialGradient(
+				0.1,
+				-0.05,
+				0.05,
+				0.35,
+				-0.15,
+				1.05,
+			);
+			underside.addColorStop(0, "hsla(30, 42%, 44%, 0.95)");
+			underside.addColorStop(0.6, "hsla(27, 36%, 33%, 0.94)");
+			underside.addColorStop(1, "hsla(24, 32%, 25%, 0.92)");
+			ctx.fillStyle = underside;
+			this.traceForewing(ctx);
+			ctx.fill();
+			this.traceHindwing(ctx);
 			ctx.fill();
 
-			ctx.strokeStyle = `hsla(${hue + 40}, 70%, 30%, 0.35)`;
-			ctx.lineWidth = 0.02;
-			ctx.beginPath();
-			ctx.moveTo(0.04, -0.12);
-			ctx.bezierCurveTo(0.45, -1.05, 1.2, -0.72, 0.92, -0.12);
-			ctx.stroke();
+			// 半開でも下地の褐色が透けると藍色に濁るため、
+			// アルファは開き具合より先に飽和させ、頂点で純色を出す
+			const blueAlpha = Math.min(1, iri * 1.45);
+			if (blueAlpha > 0.03) {
+				const structural = ctx.createRadialGradient(
+					0.1,
+					-0.05,
+					0.05,
+					0.35,
+					-0.15,
+					1.05,
+				);
+				structural.addColorStop(
+					0,
+					`hsla(${hue - 14}, 100%, 72%, ${blueAlpha})`,
+				);
+				structural.addColorStop(0.55, `hsla(${hue}, 96%, 56%, ${blueAlpha})`);
+				structural.addColorStop(1, `hsla(${hue + 14}, 88%, 42%, ${blueAlpha})`);
+				ctx.fillStyle = structural;
+				this.traceForewing(ctx);
+				ctx.fill();
+				this.traceHindwing(ctx);
+				ctx.fill();
+			}
+
+			ctx.restore();
+
+			// 前翅の翅脈。開いている時だけ僅かに見せる
+			if (iri > 0.3) {
+				ctx.strokeStyle = `hsla(${hue + 20}, 60%, 20%, ${0.25 * iri})`;
+				ctx.lineWidth = 0.015;
+				for (const t of [0.3, 0.55, 0.8]) {
+					ctx.beginPath();
+					ctx.moveTo(0.08, -0.14);
+					ctx.quadraticCurveTo(
+						0.45 * t + 0.2,
+						-0.85 * t,
+						0.95 * t,
+						-0.75 * t + 0.06,
+					);
+					ctx.stroke();
+				}
+			}
 
 			ctx.restore();
 		}
 
-		ctx.fillStyle = `hsla(${hue + 40}, 40%, 22%, 0.95)`;
+		ctx.fillStyle = "hsla(24, 28%, 12%, 0.96)";
 		ctx.beginPath();
-		ctx.ellipse(0, 0.08, 0.07, 0.42, 0, 0, TWO_PI);
+		ctx.ellipse(0, 0.06, 0.06, 0.4, 0, 0, TWO_PI);
 		ctx.fill();
 
-		ctx.strokeStyle = `hsla(${hue + 40}, 40%, 25%, 0.8)`;
-		ctx.lineWidth = 0.025;
+		ctx.strokeStyle = "hsla(24, 28%, 16%, 0.85)";
+		ctx.lineWidth = 0.022;
 		for (const side of [-1, 1]) {
 			ctx.beginPath();
 			ctx.moveTo(0, -0.3);
-			ctx.quadraticCurveTo(side * 0.12, -0.5, side * 0.2, -0.55);
+			ctx.quadraticCurveTo(side * 0.12, -0.52, side * 0.22, -0.58);
 			ctx.stroke();
 		}
 
 		ctx.restore();
+	}
+
+	/** モルフォの幅広い前翅。丸みのある頂角と緩い外縁 */
+	private traceForewing(ctx: CanvasRenderingContext2D) {
+		ctx.beginPath();
+		ctx.moveTo(0.04, -0.2);
+		ctx.bezierCurveTo(0.3, -0.92, 0.85, -1.0, 1.02, -0.62);
+		ctx.bezierCurveTo(1.1, -0.38, 0.95, -0.1, 0.6, -0.02);
+		ctx.bezierCurveTo(0.35, 0.03, 0.1, 0.0, 0.04, -0.04);
+		ctx.closePath();
+	}
+
+	/** 大きく丸い後翅。前翅の付け根に重ねて連続した輪郭に見せる */
+	private traceHindwing(ctx: CanvasRenderingContext2D) {
+		ctx.beginPath();
+		ctx.moveTo(0.05, -0.06);
+		ctx.bezierCurveTo(0.5, -0.05, 0.85, 0.22, 0.78, 0.52);
+		ctx.bezierCurveTo(0.7, 0.85, 0.35, 1.0, 0.14, 0.86);
+		ctx.bezierCurveTo(0.0, 0.72, 0.0, 0.3, 0.05, -0.06);
+		ctx.closePath();
 	}
 
 	private drawVignette(chaos: number) {
