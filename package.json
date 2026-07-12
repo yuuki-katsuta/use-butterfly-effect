@@ -20,7 +20,7 @@
 		},
 		"./package.json": "./package.json"
 	},
-	"files": ["dist", "src"],
+	"files": ["dist", "src", "!src/__tests__", "!src/__debug__"],
 	"scripts": {
 		"build": "rm -rf dist && rolldown -c && tsc -p tsconfig.build.json --emitDeclarationOnly",
 		"prepack": "npm run build",
