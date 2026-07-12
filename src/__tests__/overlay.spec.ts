@@ -229,6 +229,7 @@ describe("initOverlay", () => {
 				componentName: "TestComponent",
 				line: 10,
 				timestamp: Date.now(),
+				effectId: "Effect_TestComponent_Line5",
 			});
 
 			// Assert: カウントが更新されていることを確認
@@ -241,6 +242,7 @@ describe("initOverlay", () => {
 				componentName: "TestComponent",
 				line: 15,
 				timestamp: Date.now(),
+				effectId: "Effect_TestComponent_Line5",
 			});
 
 			// Assert: カウントが2になっていることを確認

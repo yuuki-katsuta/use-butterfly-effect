@@ -5,6 +5,7 @@
  * - Closure Binding: 非同期処理用（setterにeffectIdをバインド）
  */
 
+import { EFFECT_ID_PREFIX } from "./constants";
 import type {
 	ButterflyEvent,
 	ButterflyEventListener,
@@ -50,10 +51,9 @@ let currentEffectId: string | null = null;
 let updateCounter = 0;
 
 /**
- * useEffectコールバックをラップ
- * 同期処理中のみcurrentEffectIdを設定
+ * useEffectコールバックをラップし、同期実行中のみcurrentEffectIdを設定する
  */
-export function __wrapEffect<T extends () => () => void>(
+export function __wrapEffect<T extends () => unknown>(
 	effectId: string,
 	fn: T,
 ): T {
@@ -61,11 +61,14 @@ export function __wrapEffect<T extends () => () => void>(
 		currentEffectId = effectId;
 		try {
 			const cleanup = fn();
-			if (cleanup) {
+			// truthy判定にしないのは、asyncコールバックが返すPromiseを
+			// cleanup扱いしてReactに渡すと、cleanup呼び出し時に
+			// TypeErrorでクラッシュするため
+			if (typeof cleanup === "function") {
 				return () => {
 					currentEffectId = effectId;
 					try {
-						cleanup();
+						(cleanup as () => void)();
 					} finally {
 						currentEffectId = null;
 					}
@@ -91,11 +94,22 @@ export function getCurrentEffectId(): string | null {
 
 // Setter ラッパーのキャッシュ（参照安定化用）
 type SetterFn = (value: unknown) => void;
-type WrappedSetterFn = (value: unknown, effectId: string) => void;
+type WrappedSetterFn = (value: unknown, effectId?: unknown) => void;
 const setterCache = new WeakMap<SetterFn, WrappedSetterFn>();
 
 /**
- * useState の setter をラップ（WeakMap でキャッシュして参照を安定化）
+ * useStateのsetterをラップする。WeakMapキャッシュを外さないのは、
+ * レンダリングごとに新しいラッパーを返すとsetterを依存配列に入れた
+ * effectが毎回発火してしまうため。
+ *
+ * effectIdの解決は2段構え:
+ * 1. Closure BindingされたeffectId — currentEffectIdだけに頼らないのは
+ *    await後の呼び出しで同期コンテキストが失われるため
+ * 2. currentEffectIdへのフォールバック — バインドだけに頼らないのは
+ *    effect外で定義されたコールバック（useMemo/useCallback等）経由の
+ *    呼び出しには変換が届かないため
+ *
+ * どちらも無ければeffect外の呼び出しなのでイベントは発火しない。
  */
 export function __wrapSetter(
 	original: SetterFn,
@@ -104,13 +118,22 @@ export function __wrapSetter(
 ): WrappedSetterFn {
 	let wrapped = setterCache.get(original);
 	if (!wrapped) {
-		wrapped = (value: unknown, effectId: string) => {
-			__trackStateUpdate({
-				componentName,
-				line,
-				timestamp: Date.now(),
-				effectId,
-			});
+		wrapped = (value: unknown, effectId?: unknown) => {
+			// 型だけでなくEFFECT_ID_PREFIXまで検査するのは、setterが
+			// forEach等へコールバックとして渡された場合に第2引数へ
+			// index等の無関係な値が流れ込むため
+			const resolvedEffectId =
+				typeof effectId === "string" && effectId.startsWith(EFFECT_ID_PREFIX)
+					? effectId
+					: getCurrentEffectId();
+			if (resolvedEffectId !== null) {
+				__trackStateUpdate({
+					componentName,
+					line,
+					timestamp: Date.now(),
+					effectId: resolvedEffectId,
+				});
+			}
 			return original(value);
 		};
 		setterCache.set(original, wrapped);

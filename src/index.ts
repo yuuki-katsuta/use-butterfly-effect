@@ -25,8 +25,6 @@ export default function butterflyEffect(
 		};
 	}
 
-	const projectRoot = process.cwd();
-
 	return {
 		name: PLUGIN_NAME,
 		resolveId(id) {
@@ -60,13 +58,18 @@ export default function butterflyEffect(
 			];
 		},
 		transform(code, id) {
-			// 対象外ファイルはスキップ
-			if (!id.match(/\.(jsx|tsx|ts|js)$/)) {
+			if (id.includes("/node_modules/") || id.startsWith("\0")) {
+				return null;
+			}
+			// idには ?v= や ?t= 等のクエリが付くことがあり、
+			// 拡張子を末尾一致で判定するとそれらを取りこぼす
+			const cleanId = id.split("?", 1)[0];
+			if (!/\.[jt]sx?$/.test(cleanId)) {
 				return null;
 			}
 
 			try {
-				const result = transformReactCode(code, id, projectRoot, {
+				const result = transformReactCode(code, id, {
 					trackEffect,
 					trackState,
 				});

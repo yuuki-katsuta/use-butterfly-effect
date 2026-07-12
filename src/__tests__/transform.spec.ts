@@ -1,11 +1,13 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { __wrapEffect, __wrapSetter, ButterflyEvents } from "../runtime";
 import { transformReactCode } from "../transform";
+import type { ButterflyEvent } from "../types";
 
 const transform = (
 	code: string,
 	options: { trackState?: boolean; trackEffect?: boolean } = {},
 ) => {
-	return transformReactCode(code, "/test/component.tsx", process.cwd(), {
+	return transformReactCode(code, "/test/component.tsx", {
 		trackState: options.trackState ?? true,
 		trackEffect: options.trackEffect ?? true,
 	});
@@ -935,5 +937,371 @@ function App() {
 		expect(result).not.toBeNull();
 		expect(result?.code).toContain("__butterfly_effectId");
 		expect(result?.code).toContain("__bound_setCount");
+	});
+});
+
+describe("スコープ解決の回帰テスト", () => {
+	test("effect内のメンバー式プロパティ（obj.setCount）はリネームしない", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    api.setCount(5);
+  }, []);
+
+  return <div>{count}</div>;
+}
+`;
+
+		const result = transform(code);
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("api.setCount(5)");
+		expect(result?.code).not.toContain("api.__bound_setCount");
+	});
+
+	test("effect内でシャドーイングされたローカル変数はリネームしない", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const setCount = (n) => log(n);
+    setCount(1);
+  }, []);
+
+  return <div>{count}</div>;
+}
+`;
+
+		const result = transform(code);
+
+		expect(result).not.toBeNull();
+		// ローカルバインディングへの参照はsetter扱いしない
+		expect(result?.code).not.toContain("__bound_setCount");
+	});
+
+	test("ネストブロック内のシャドーイングと外側setter使用が混在しても正しく区別する", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    setCount(1);
+    if (flag) {
+      const setCount = localFn;
+      setCount(2);
+    }
+  }, []);
+
+  return <div>{count}</div>;
+}
+`;
+
+		const result = transform(code);
+
+		expect(result).not.toBeNull();
+		// 外側setterへの参照だけがバインド版になる
+		expect(result?.code).toMatch(/__bound_setCount\(1\)/);
+		expect(result?.code).not.toMatch(/__bound_setCount\(2\)/);
+		expect(result?.code).toMatch(/setCount\(2\)/);
+	});
+
+	test("1ファイル複数コンポーネントでそれぞれのコンポーネント名に帰属する", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function Foo() {
+  const [a, setA] = useState(0);
+  useEffect(() => { setA(1); }, []);
+  return <div>{a}</div>;
+}
+
+function Bar() {
+  const [b, setB] = useState(0);
+  useEffect(() => { setB(2); }, []);
+  return <div>{b}</div>;
+}
+`;
+
+		const result = transform(code);
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toMatch(
+			/__wrapSetter\(__butterfly_original_setA, "Foo"/,
+		);
+		expect(result?.code).toMatch(
+			/__wrapSetter\(__butterfly_original_setB, "Bar"/,
+		);
+		expect(result?.code).toContain("Effect_Foo_Line");
+		expect(result?.code).toContain("Effect_Bar_Line");
+	});
+
+	test("別コンポーネントの同名setterをバインドしない", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function Foo() {
+  const [v, setV] = useState(0);
+  return <div>{v}</div>;
+}
+
+function Bar() {
+  useEffect(() => { setV(2); }, []);
+  return <div />;
+}
+`;
+
+		const result = transform(code);
+
+		expect(result).not.toBeNull();
+		expect(result?.code).not.toContain("__bound_setV");
+	});
+
+	test("変換済みコードを再変換しない（冪等性）", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+  useEffect(() => { setCount(1); }, []);
+  return <div>{count}</div>;
+}
+`;
+
+		const first = transform(code);
+		expect(first).not.toBeNull();
+
+		const second = transform(first?.code ?? "");
+		expect(second).toBeNull();
+	});
+
+	test("ランタイムを正規にimportするユーザーファイルは変換対象のまま", () => {
+		const code = `
+import { useEffect, useState } from "react";
+import { ButterflyEvents } from "vite-plugin-butterfly-effect/runtime";
+
+function App() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const off = ButterflyEvents.on(() => {});
+    setCount(1);
+    return off;
+  }, []);
+
+  return <div>{count}</div>;
+}
+`;
+
+		const result = transform(code);
+
+		// ButterflyEvents購読のimportは変換済みマーカーではない
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__wrapSetter");
+	});
+
+	test("trackEffect: false の場合はeffectをラップせず、setterのみラップする", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    setCount(1);
+  }, []);
+
+  return <div>{count}</div>;
+}
+`;
+
+		const result = transform(code, { trackEffect: false });
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain("__wrapSetter");
+		expect(result?.code).not.toContain("__wrapEffect");
+		expect(result?.code).not.toContain("__bound_setCount");
+	});
+
+	test("ソースマップを返す", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+  useEffect(() => { setCount(1); }, []);
+  return <div>{count}</div>;
+}
+`;
+
+		const result = transform(code);
+
+		expect(result).not.toBeNull();
+		expect(result?.map).not.toBeNull();
+		expect(result?.map).toBeDefined();
+	});
+});
+
+describe("変換出力の実行時動作（transform + runtime 統合）", () => {
+	afterEach(() => {
+		ButterflyEvents.clear();
+	});
+
+	/**
+	 * 変換後コードを実際に実行するヘルパー。
+	 * JSXを含まないコンポーネント（return null）を前提に、
+	 * React代替のuseState/useEffectスタブと実ランタイムを注入する
+	 */
+	const evalComponent = (
+		code: string,
+		extraGlobals: Record<string, unknown> = {},
+	) => {
+		const result = transform(code);
+		expect(result).not.toBeNull();
+
+		const body = (result?.code ?? "").replace(/^import .*$/gm, "");
+		const effectQueue: Array<() => unknown> = [];
+		const useState = (initial: unknown) => [initial, () => {}];
+		const useEffect = (cb: () => unknown) => {
+			effectQueue.push(cb);
+		};
+
+		const events: ButterflyEvent[] = [];
+		ButterflyEvents.on((e) => events.push(e));
+
+		const globalNames = Object.keys(extraGlobals);
+		const factory = new Function(
+			"__wrapSetter",
+			"__wrapEffect",
+			"useState",
+			"useEffect",
+			...globalNames,
+			`${body}\nreturn App;`,
+		);
+		const App = factory(
+			__wrapSetter,
+			__wrapEffect,
+			useState,
+			useEffect,
+			...globalNames.map((n) => extraGlobals[n]),
+		);
+
+		return {
+			render: () => App(),
+			runEffects: () => {
+				for (const cb of effectQueue) cb();
+			},
+			events,
+		};
+	};
+
+	test("effect内のsetStateはeffectId付きイベントを発火する", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    setCount(1);
+  }, []);
+
+  return null;
+}
+`;
+
+		const { render, runEffects, events } = evalComponent(code);
+		render();
+		runEffects();
+
+		expect(events).toHaveLength(1);
+		expect(events[0].componentName).toBe("App");
+		expect(events[0].effectId).toMatch(/^Effect_App_Line\d+$/);
+	});
+
+	test("effect内のobj.setCount()呼び出しはクラッシュせず元のメソッドを呼ぶ", () => {
+		const apiSetCount = vi.fn();
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    api.setCount(5);
+  }, []);
+
+  return null;
+}
+`;
+
+		const { render, runEffects, events } = evalComponent(code, {
+			api: { setCount: apiSetCount },
+		});
+		render();
+
+		expect(() => runEffects()).not.toThrow();
+		expect(apiSetCount).toHaveBeenCalledWith(5);
+		expect(events).toHaveLength(0);
+	});
+
+	test("effect内のシャドーイングされたローカル関数は引数を漏らさず呼ばれ、state setterは呼ばれない", () => {
+		const calls: unknown[][] = [];
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const setCount = (n) => record(n);
+    setCount(1);
+  }, []);
+
+  return null;
+}
+`;
+
+		const { render, runEffects, events } = evalComponent(code, {
+			record: (...args: unknown[]) => calls.push(args),
+		});
+		render();
+		runEffects();
+
+		// ローカル関数が余分な引数なしで呼ばれる（挙動改変なし）
+		expect(calls).toEqual([[1]]);
+		// state setterには帰属しない
+		expect(events).toHaveLength(0);
+	});
+
+	test("イベントハンドラ相当のeffect外呼び出しではイベントを発火しない", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    //
+  }, []);
+
+  return () => setCount(count + 1);
+}
+`;
+
+		const { render, runEffects, events } = evalComponent(code);
+		const handler = render() as () => void;
+		runEffects();
+		handler();
+
+		expect(events).toHaveLength(0);
 	});
 });

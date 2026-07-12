@@ -21,6 +21,7 @@ export interface ButterflyEvent {
 	componentName: string;
 	line: number;
 	timestamp: number;
+	effectId: string;
 }
 
 export type ButterflyEventListener = (event: ButterflyEvent) => void;
