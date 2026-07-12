@@ -5,12 +5,12 @@
  * - Closure Binding: 非同期処理用（setterにeffectIdをバインド）
  */
 
-import { EFFECT_ID_PREFIX } from "./constants";
+import { EFFECT_ID_PREFIX } from "./constants.js";
 import type {
 	ButterflyEvent,
 	ButterflyEventListener,
 	StateUpdateData,
-} from "./types";
+} from "./types.js";
 
 // ============================================
 // Event Emitter

@@ -3,8 +3,8 @@ import { parse } from "@babel/parser";
 import type { NodePath } from "@babel/traverse";
 import traverseDefault from "@babel/traverse";
 import * as t from "@babel/types";
-import { EFFECT_ID_PREFIX, RUNTIME_MODULE } from "./constants";
-import type { ButterflyEffectOptions } from "./types";
+import { EFFECT_ID_PREFIX, RUNTIME_MODULE } from "./constants.js";
+import type { ButterflyEffectOptions } from "./types.js";
 
 type TraverseFunction = typeof traverseDefault;
 type GenerateFunction = typeof generateDefault;
