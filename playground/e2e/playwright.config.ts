@@ -5,7 +5,8 @@ export default defineConfig({
 	fullyParallel: true,
 	forbidOnly: !!process.env.CI,
 	retries: process.env.CI ? 2 : 0,
-	workers: process.env.CI ? 1 : undefined,
+	// ローカルはワーカー数を絞る（並列Chromiumによるメモリ枯渇でタイムアウトするため）
+	workers: process.env.CI ? 1 : 2,
 	reporter: "html",
 	use: {
 		baseURL: "http://localhost:5174",
