@@ -1,9 +1,9 @@
-import { ButterflyEvents } from "./runtime";
+import { ButterflyEvents } from "./runtime.js";
 import type {
 	Butterfly,
 	ButterflyEffectOptions,
 	ButterflyEvent,
-} from "./types";
+} from "./types.js";
 
 // Butterfly Canvas Implementation
 class ButterflyCanvas {
@@ -13,8 +13,6 @@ class ButterflyCanvas {
 	private ctx: CanvasRenderingContext2D;
 
 	constructor(container: HTMLElement, options: ButterflyEffectOptions) {
-		console.log("ButterflyCanvas initialized with options:", options);
-
 		this.options = options;
 		this.butterflies = [];
 
@@ -41,8 +39,6 @@ class ButterflyCanvas {
 		if (this.butterflies.length >= (this.options?.maxButterflies || 0)) {
 			this.butterflies.shift();
 		}
-
-		console.log("[ButterflyCanvas] Creating butterfly for event:", event);
 
 		// Define bottom-right area boundaries
 		const rightAreaStartX = this.canvas.width * 0.5; // Right half
@@ -173,8 +169,6 @@ class ButterflyCanvas {
 }
 
 export function initOverlay(options: ButterflyEffectOptions) {
-	console.log("[Butterfly Effect] Initializing overlay...", options);
-
 	// Create overlay container
 	const container = document.createElement("div");
 	container.id = "butterfly-effect-overlay";
@@ -228,8 +222,6 @@ export function initOverlay(options: ButterflyEffectOptions) {
 				updateCountElem.textContent = updateCount.toString();
 			}
 		});
-
-		console.log("[Butterfly Effect] Overlay initialized");
 	}
 
 	// Wait for DOM to be ready
