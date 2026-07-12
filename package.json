@@ -1,6 +1,6 @@
 {
 	"name": "vite-plugin-butterfly-effect",
-	"version": "1.0.0",
+	"version": "0.1.0",
 	"description": "A Vite plugin that visualizes React useEffect and state update chains as beautiful butterfly effects",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -17,14 +17,17 @@
 		"./runtime": {
 			"types": "./dist/runtime.d.ts",
 			"import": "./dist/runtime.js"
-		}
+		},
+		"./package.json": "./package.json"
 	},
-	"files": [
-		"dist"
-	],
+	"files": ["dist", "src"],
 	"scripts": {
-		"build": "rolldown -c && tsc --emitDeclarationOnly",
+		"build": "rm -rf dist && rolldown -c && tsc -p tsconfig.build.json --emitDeclarationOnly",
+		"prepack": "npm run build",
+		"lint": "biome check src/",
+		"typecheck": "tsc --noEmit",
 		"test": "vitest",
+		"test:run": "vitest run",
 		"test:ui": "vitest --ui",
 		"test:coverage": "vitest --coverage"
 	},
@@ -38,8 +41,22 @@
 		"debugging",
 		"devtools"
 	],
-	"author": "",
+	"author": "tpryuki",
 	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/yuuki-katsuta/butterfly-effect.git"
+	},
+	"homepage": "https://github.com/yuuki-katsuta/butterfly-effect#readme",
+	"bugs": {
+		"url": "https://github.com/yuuki-katsuta/butterfly-effect/issues"
+	},
+	"engines": {
+		"node": "^20.19.0 || >=22.12.0"
+	},
+	"peerDependencies": {
+		"vite": "^7.0.0 || ^8.0.0"
+	},
 	"dependencies": {
 		"@babel/generator": "^7.26.0",
 		"@babel/parser": "^7.26.0",
@@ -56,6 +73,7 @@
 		"happy-dom": "^20.0.10",
 		"rolldown": "^1.0.0-beta.50",
 		"typescript": "^5.9.3",
+		"vite": "^7.2.2",
 		"vitest": "^4.0.8"
 	}
 }
