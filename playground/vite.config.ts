@@ -10,7 +10,7 @@ export default defineConfig({
 		butterflyEffect({
 			enabled: true,
 			showStatus: true,
-			animationSpeed: 1000,
+			animationSpeed: 4000,
 			maxButterflies: 100,
 		}) as PluginOption,
 	],
