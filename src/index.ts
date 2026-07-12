@@ -1,6 +1,7 @@
 import type { Plugin } from "vite";
+import { OVERLAY_MODULE, RUNTIME_MODULE } from "./constants.js";
 import { transformReactCode } from "./transform.js";
-import type { ButterflyEffectOptions } from "./types";
+import type { ButterflyEffectOptions } from "./types.js";
 
 const PLUGIN_NAME = "vite-plugin-butterfly-effect";
 const OVERLAY_PATH = "/@butterfly-effect-overlay";
@@ -10,7 +11,7 @@ export default function butterflyEffect(
 	options: ButterflyEffectOptions = {},
 ): Plugin {
 	const {
-		enabled = process.env.NODE_ENV === "development",
+		enabled = true,
 		theme = "default",
 		showStatus = false,
 		animationSpeed = 1000,
@@ -22,11 +23,34 @@ export default function butterflyEffect(
 	if (!enabled) {
 		return {
 			name: PLUGIN_NAME,
+			apply: "serve",
 		};
 	}
 
+	const overlayOptions = {
+		theme,
+		showStatus,
+		animationSpeed,
+		maxButterflies,
+		trackEffect,
+		trackState,
+	};
+
 	return {
 		name: PLUGIN_NAME,
+		// enabledオプションだけに任せないのは、NODE_ENVの外部設定次第で
+		// 計測コードとオーバーレイが本番ビルドに混入してしまうため
+		apply: "serve",
+		config() {
+			// transformで注入するimportは初期スキャンに載らず、Viteが
+			// 依存を再発見してリバンドル+ページリロードを繰り返すため、
+			// 事前にオプティマイザへ登録しておく
+			return {
+				optimizeDeps: {
+					include: [RUNTIME_MODULE, OVERLAY_MODULE],
+				},
+			};
+		},
 		resolveId(id) {
 			if (id === OVERLAY_PATH) {
 				return OVERLAY_VIRTUAL_ID;
@@ -35,16 +59,9 @@ export default function butterflyEffect(
 		load(id) {
 			if (id === OVERLAY_VIRTUAL_ID) {
 				return `
-					import { initOverlay } from 'vite-plugin-butterfly-effect/overlay';
+					import { initOverlay } from ${JSON.stringify(OVERLAY_MODULE)};
 
-					initOverlay({
-						theme: '${theme}',
-						showStatus: ${showStatus},
-						animationSpeed: ${animationSpeed},
-						maxButterflies: ${maxButterflies},
-						trackEffect: ${trackEffect},
-						trackState: ${trackState},
-					});
+					initOverlay(${JSON.stringify(overlayOptions)});
 				`;
 			}
 		},
@@ -69,12 +86,10 @@ export default function butterflyEffect(
 			}
 
 			try {
-				const result = transformReactCode(code, id, {
+				return transformReactCode(code, id, {
 					trackEffect,
 					trackState,
 				});
-
-				return result;
 			} catch (error) {
 				console.error(`[${PLUGIN_NAME}] Error transforming ${id}:`, error);
 				return null;
