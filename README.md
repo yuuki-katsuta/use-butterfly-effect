@@ -18,7 +18,8 @@ https://github.com/user-attachments/assets/1a563ffe-b9af-4d5a-8bb0-303cd58dd037
 - **Tracks `setState` calls made inside `useEffect`** — and only those. State updates from event handlers stay silent.
 - **Survives `await`**: updates after asynchronous work inside an effect are still attributed to the effect that started them (closure-bound effect IDs, no stack-trace guessing).
 - **Follows indirect calls**: setters invoked through `useCallback`/`useMemo`-cached callbacks or helper functions are attributed to the running effect.
-- **Renders each tracked update as a butterfly** on a click-through canvas overlay, with an optional status panel showing live counts.
+- **Explains why each effect ran**: every effect run records which dependency changed, its before/after values, which effect wrote that state, and the resulting cascade depth (`handler → effect → effect` = depth 2). Reference-only changes with identical values are flagged — the classic missing-memoization bug.
+- **Renders each tracked update as a butterfly** on a click-through canvas overlay. Deeper-cascade butterflies render larger and more violet; the status panel shows live counts and the max chain depth.
 
 Unlike lint rules (`react-hooks/set-state-in-effect`), this happens at runtime: it sees asynchronous writes, chained effects, and how *often* they fire — not just where they are written.
 
@@ -64,13 +65,14 @@ Run `vite` and interact with your app. Butterflies appear whenever an effect wri
 ## Caveats
 
 - **React `<StrictMode>`** runs one extra setup+cleanup cycle per effect in development, so initial-mount butterflies appear twice. That is React re-running your effects, faithfully reported.
+- **Hot reload after shape-changing edits**: the instrumentation adds a hidden `useRef` to components with effects. An edit that flips a component between instrumented and uninstrumented shapes (e.g. rewriting a one-line hook into a block body) changes the hook count under react-refresh's unchanged signature and can throw "Rendered more hooks than during the previous render" — a full page reload recovers.
 - **React Compiler**: when `babel-plugin-react-compiler` runs first, effect callbacks may become memoized references that the transform cannot wrap; tracking degrades silently.
 - Aliased hook imports (`import { useState as useS }`) are not instrumented.
 - `useReducer` is not tracked yet (see roadmap).
 
 ## Roadmap
 
-- [ ] Root-cause view: which dependency change fired the effect
+- [x] Root-cause tracking: which dependency change fired the effect, and who wrote it
 - [ ] Recording with a timeline report of effect/state activity
 - [ ] Causal graph (DAG) of effect → state → effect chains
 - [ ] Storm detection: warn when update cycles run hot

@@ -246,6 +246,27 @@ test.describe("Butterfly Effect E2E Tests", () => {
 			await expect(page.getByTestId("state-b")).toContainText("1");
 			await expect(page.getByTestId("state-c")).toContainText("1");
 		});
+
+		test("連鎖の因果が追跡され、Max Chain Depthが2以上になる", async ({
+			page,
+		}) => {
+			// trigger(handler) → effect1がA更新 → effect2がB更新 → effect3がC更新
+			// という3段連鎖なので、深度は最低でも2に達する。
+			// 3回のReactコミットを跨ぐため固定待ちではなくポーリングする
+			await page.getByTestId("trigger").click();
+
+			await expect
+				.poll(
+					async () => {
+						const text = await page
+							.locator("#butterfly-max-depth")
+							.textContent();
+						return Number.parseInt(text || "0", 10);
+					},
+					{ timeout: 5000 },
+				)
+				.toBeGreaterThanOrEqual(2);
+		});
 	});
 
 	test.describe("UseCallbackMemo - 蝶が舞わないケース（正しくメモ化）", () => {

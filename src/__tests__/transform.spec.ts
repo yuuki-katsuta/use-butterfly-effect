@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { __wrapEffect, __wrapSetter, ButterflyEvents } from "../runtime";
+import {
+	__captureDeps,
+	__wrapEffect,
+	__wrapSetter,
+	ButterflyEvents,
+} from "../runtime";
 import { transformReactCode } from "../transform";
 import type { ButterflyEvent } from "../types";
 
@@ -1150,6 +1155,131 @@ function App() {
 	});
 });
 
+describe("deps記録（発火原因の特定）の変換", () => {
+	test("deps配列を__captureDepsで包み、dep名とstateIdを静的に埋め込む", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    setCount(count + 1);
+  }, [count]);
+
+  return <div>{count}</div>;
+}
+`;
+
+		const result = transform(code);
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toContain(
+			"const __butterfly_inst = __butterfly_useRef({}).current",
+		);
+		expect(result?.code).toContain(
+			'import { useRef as __butterfly_useRef } from "react"',
+		);
+		expect(result?.code).toMatch(
+			/__captureDeps\(__butterfly_inst, "Effect_App_Line\d+_m[0-9a-z]+", \["count"\], \["State_App_Line\d+_m[0-9a-z]+"\], \[count\]\)/,
+		);
+		expect(result?.code).toMatch(
+			/__wrapEffect\("Effect_App_Line\d+_m[0-9a-z]+", .*__butterfly_inst\)/s,
+		);
+	});
+
+	test("state以外のdepはstateId=nullで名前だけ記録する", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App({ user }) {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    setCount(1);
+  }, [user.id, count]);
+
+  return <div>{count}</div>;
+}
+`;
+
+		const result = transform(code);
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toMatch(
+			/\["user\.id", "count"\], \[null, "State_App_Line\d+_m[0-9a-z]+"\]/,
+		);
+	});
+
+	test("deps省略時は__captureDepsで包まない", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    setCount(1);
+  });
+
+  return <div>{count}</div>;
+}
+`;
+
+		const result = transform(code);
+
+		expect(result).not.toBeNull();
+		expect(result?.code).not.toContain("__captureDeps");
+	});
+
+	test("配列リテラルでないdepsは名前なし（値のみ）で記録する", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+  const deps = [count];
+
+  useEffect(() => {
+    setCount(1);
+  }, deps);
+
+  return <div>{count}</div>;
+}
+`;
+
+		const result = transform(code);
+
+		expect(result).not.toBeNull();
+		expect(result?.code).toMatch(
+			/__captureDeps\(__butterfly_inst, "Effect_App_Line\d+_m[0-9a-z]+", null, null, deps\)/,
+		);
+	});
+
+	test("trackEffect: false ならdeps記録もインスタンスrefも注入しない", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    setCount(1);
+  }, [count]);
+
+  return <div>{count}</div>;
+}
+`;
+
+		const result = transform(code, { trackEffect: false });
+
+		expect(result).not.toBeNull();
+		expect(result?.code).not.toContain("__captureDeps");
+		expect(result?.code).not.toContain("__butterfly_inst");
+		expect(result?.code).not.toContain("__butterfly_useRef");
+	});
+});
+
 describe("変換出力の実行時動作（transform + runtime 統合）", () => {
 	afterEach(() => {
 		ButterflyEvents.clear();
@@ -1163,15 +1293,26 @@ describe("変換出力の実行時動作（transform + runtime 統合）", () =>
 	const evalComponent = (
 		code: string,
 		extraGlobals: Record<string, unknown> = {},
+		hooks: { useState?: (initial: unknown) => unknown[] } = {},
 	) => {
 		const result = transform(code);
 		expect(result).not.toBeNull();
 
 		const body = (result?.code ?? "").replace(/^import .*$/gm, "");
 		const effectQueue: Array<() => unknown> = [];
-		const useState = (initial: unknown) => [initial, () => {}];
+		const useState =
+			hooks.useState ?? ((initial: unknown) => [initial, () => {}]);
 		const useEffect = (cb: () => unknown) => {
 			effectQueue.push(cb);
+		};
+		const refs: { current: unknown }[] = [];
+		let refIndex = 0;
+		const useRef = (initial: unknown) => {
+			// レンダー毎に同じrefを返す（Reactのフック順序前提を模倣）
+			const ref = refs[refIndex] ?? { current: initial };
+			refs[refIndex] = ref;
+			refIndex++;
+			return ref;
 		};
 
 		const events: ButterflyEvent[] = [];
@@ -1181,6 +1322,8 @@ describe("変換出力の実行時動作（transform + runtime 統合）", () =>
 		const factory = new Function(
 			"__wrapSetter",
 			"__wrapEffect",
+			"__captureDeps",
+			"__butterfly_useRef",
 			"useState",
 			"useEffect",
 			...globalNames,
@@ -1189,16 +1332,25 @@ describe("変換出力の実行時動作（transform + runtime 統合）", () =>
 		const App = factory(
 			__wrapSetter,
 			__wrapEffect,
+			__captureDeps,
+			useRef,
 			useState,
 			useEffect,
 			...globalNames.map((n) => extraGlobals[n]),
 		);
 
 		return {
-			render: () => App(),
-			runEffects: () => {
-				for (const cb of effectQueue) cb();
+			render: () => {
+				refIndex = 0;
+				return App();
 			},
+			runEffects: () => {
+				const pending = [...effectQueue];
+				effectQueue.length = 0;
+				for (const cb of pending) cb();
+			},
+			stateEvents: () => events.filter((e) => e.kind === "state-update"),
+			effectRuns: () => events.filter((e) => e.kind === "effect-run"),
 			events,
 		};
 	};
@@ -1218,13 +1370,17 @@ function App() {
 }
 `;
 
-		const { render, runEffects, events } = evalComponent(code);
+		const { render, runEffects, stateEvents } = evalComponent(code);
 		render();
 		runEffects();
 
-		expect(events).toHaveLength(1);
-		expect(events[0].componentName).toBe("App");
-		expect(events[0].effectId).toMatch(/^Effect_App_Line\d+$/);
+		const updates = stateEvents();
+		expect(updates).toHaveLength(1);
+		expect(updates[0]).toMatchObject({
+			kind: "state-update",
+			componentName: "App",
+		});
+		expect(updates[0].effectId).toMatch(/^Effect_App_Line\d+_m[0-9a-z]+$/);
 	});
 
 	test("effect内のobj.setCount()呼び出しはクラッシュせず元のメソッドを呼ぶ", () => {
@@ -1243,14 +1399,14 @@ function App() {
 }
 `;
 
-		const { render, runEffects, events } = evalComponent(code, {
+		const { render, runEffects, stateEvents } = evalComponent(code, {
 			api: { setCount: apiSetCount },
 		});
 		render();
 
 		expect(() => runEffects()).not.toThrow();
 		expect(apiSetCount).toHaveBeenCalledWith(5);
-		expect(events).toHaveLength(0);
+		expect(stateEvents()).toHaveLength(0);
 	});
 
 	test("effect内のシャドーイングされたローカル関数は引数を漏らさず呼ばれ、state setterは呼ばれない", () => {
@@ -1270,7 +1426,7 @@ function App() {
 }
 `;
 
-		const { render, runEffects, events } = evalComponent(code, {
+		const { render, runEffects, stateEvents } = evalComponent(code, {
 			record: (...args: unknown[]) => calls.push(args),
 		});
 		render();
@@ -1279,7 +1435,7 @@ function App() {
 		// ローカル関数が余分な引数なしで呼ばれる（挙動改変なし）
 		expect(calls).toEqual([[1]]);
 		// state setterには帰属しない
-		expect(events).toHaveLength(0);
+		expect(stateEvents()).toHaveLength(0);
 	});
 
 	test("イベントハンドラ相当のeffect外呼び出しではイベントを発火しない", () => {
@@ -1297,11 +1453,76 @@ function App() {
 }
 `;
 
-		const { render, runEffects, events } = evalComponent(code);
+		const { render, runEffects, stateEvents } = evalComponent(code);
 		const handler = render() as () => void;
 		runEffects();
 		handler();
 
-		expect(events).toHaveLength(0);
+		expect(stateEvents()).toHaveLength(0);
+	});
+
+	test("effect連鎖の因果と深度を2回のレンダー越しに追跡する", () => {
+		const code = `
+import { useEffect, useState } from "react";
+
+function App() {
+  const [a, setA] = useState(0);
+  const [b, setB] = useState(0);
+
+  useEffect(() => {
+    setA(1);
+  }, []);
+
+  useEffect(() => {
+    setB(a + 1);
+  }, [a]);
+
+  return null;
+}
+`;
+
+		// Reactの代わりにstate値の変化を手動で与える
+		const stateValues = [0, 0];
+		let stateIndex = 0;
+		const useState = (initial: unknown) => {
+			const value = stateValues[stateIndex] ?? initial;
+			stateIndex++;
+			return [value, () => {}];
+		};
+
+		const { render, runEffects, effectRuns, stateEvents } = evalComponent(
+			code,
+			{},
+			{ useState },
+		);
+
+		// render#1: マウント。E1がaをdepth0で書く
+		stateIndex = 0;
+		render();
+		runEffects();
+
+		// render#2: aが1に変わった世界
+		stateValues[0] = 1;
+		stateIndex = 0;
+		render();
+		runEffects();
+
+		const runs = effectRuns();
+		const e2Runs = runs.filter((r) => r.changedDeps?.length);
+		expect(e2Runs).toHaveLength(1);
+		expect(e2Runs[0]).toMatchObject({
+			depth: 1,
+			causeStateId: expect.stringMatching(/^State_App_Line\d+_m[0-9a-z]+$/),
+			causeEffectId: expect.stringMatching(/^Effect_App_Line\d+_m[0-9a-z]+$/),
+		});
+		expect(e2Runs[0].changedDeps?.[0]).toMatchObject({
+			name: "a",
+			prevPreview: "0",
+			nextPreview: "1",
+		});
+
+		// E2内のsetBはdepth1のstate-updateになる
+		const bUpdates = stateEvents().filter((e) => e.depth === 1);
+		expect(bUpdates.length).toBeGreaterThanOrEqual(1);
 	});
 });

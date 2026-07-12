@@ -238,11 +238,14 @@ describe("initOverlay", () => {
 
 			// イベントを発火
 			ButterflyEvents.emit({
+				kind: "state-update",
 				id: "test-1",
 				componentName: "TestComponent",
 				line: 10,
 				timestamp: Date.now(),
 				effectId: "Effect_TestComponent_Line5",
+				stateId: "State_TestComponent_Line3",
+				depth: 1,
 			});
 
 			// Assert: カウントが更新されていることを確認
@@ -251,15 +254,52 @@ describe("initOverlay", () => {
 
 			// さらにイベントを発火
 			ButterflyEvents.emit({
+				kind: "state-update",
 				id: "test-2",
 				componentName: "TestComponent",
 				line: 15,
 				timestamp: Date.now(),
 				effectId: "Effect_TestComponent_Line5",
+				stateId: "State_TestComponent_Line3",
+				depth: 1,
 			});
 
 			// Assert: カウントが2になっていることを確認
 			expect(updateCountElem?.textContent).toBe("2");
+		});
+
+		test("effect-runイベントはMax Depthだけを更新し、蝶のカウントには含めない", async () => {
+			const options: ButterflyEffectOptions = {
+				enabled: true,
+				showStatus: true,
+			};
+
+			Object.defineProperty(document, "readyState", {
+				writable: true,
+				value: "complete",
+			});
+
+			const { initOverlay } = await import("../overlay");
+			initOverlay(options);
+
+			ButterflyEvents.emit({
+				kind: "effect-run",
+				id: "run-1",
+				effectId: "Effect_TestComponent_Line5",
+				timestamp: Date.now(),
+				isFirstRun: false,
+				depth: 3,
+				changedDeps: [],
+				causeEffectId: null,
+				causeStateId: null,
+			});
+
+			expect(document.getElementById("butterfly-max-depth")?.textContent).toBe(
+				"3",
+			);
+			expect(
+				document.getElementById("butterfly-update-count")?.textContent,
+			).toBe("0");
 		});
 	});
 });

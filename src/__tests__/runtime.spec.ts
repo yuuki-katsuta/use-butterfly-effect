@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
+	__captureDeps,
 	__wrapEffect,
 	__wrapSetter,
 	ButterflyEvents,
 	getCurrentEffectId,
+	type InstanceStore,
 } from "../runtime";
-import type { ButterflyEvent } from "../types";
+import type { ButterflyEvent, EffectRunEvent } from "../types";
 
 const collectEvents = () => {
 	const events: ButterflyEvent[] = [];
@@ -117,8 +119,9 @@ describe("__wrapSetter", () => {
 		});
 		effect();
 
-		expect(events).toHaveLength(1);
-		expect(events[0].effectId).toBe("Effect_App_Line9");
+		const stateEvents = events.filter((e) => e.kind === "state-update");
+		expect(stateEvents).toHaveLength(1);
+		expect(stateEvents[0].effectId).toBe("Effect_App_Line9");
 	});
 
 	test("effect外でsetterがコールバックとして渡された場合（forEachのindex等）はイベントを発火しない", () => {
@@ -160,5 +163,276 @@ describe("ButterflyEvents", () => {
 		wrapped(2, "Effect_App_Line2");
 		expect(listener).toHaveBeenCalledTimes(1);
 		expect(events).toHaveLength(2);
+	});
+});
+
+describe("__captureDeps + 発火原因の特定", () => {
+	const effectRuns = (events: ButterflyEvent[]): EffectRunEvent[] =>
+		events.filter((e) => e.kind === "effect-run");
+
+	test("depsをそのまま返す（Reactの比較セマンティクスを変えない）", () => {
+		const inst: InstanceStore = {};
+		const deps = [1, "a"];
+
+		const returned = __captureDeps(
+			inst,
+			"Effect_App_Line5",
+			["x", "y"],
+			[null, null],
+			deps,
+		);
+
+		expect(returned).toBe(deps);
+	});
+
+	test("初回実行はchangedDeps=null・isFirstRun=true・depth=0", () => {
+		const events = collectEvents();
+		const inst: InstanceStore = {};
+
+		__captureDeps(inst, "Effect_App_Line5", ["count"], [null], [0]);
+		__wrapEffect("Effect_App_Line5", () => {}, inst)();
+
+		const [run] = effectRuns(events);
+		expect(run).toMatchObject({
+			kind: "effect-run",
+			isFirstRun: true,
+			changedDeps: null,
+			depth: 0,
+			causeEffectId: null,
+		});
+	});
+
+	test("依存が変わらない再実行（StrictMode相当）はchangedDeps=[]でdepth=0", () => {
+		const events = collectEvents();
+		const inst: InstanceStore = {};
+		const effect = __wrapEffect("Effect_App_Line5", () => {}, inst);
+
+		__captureDeps(inst, "Effect_App_Line5", ["count"], [null], [0]);
+		effect();
+		__captureDeps(inst, "Effect_App_Line5", ["count"], [null], [0]);
+		effect();
+
+		const runs = effectRuns(events);
+		expect(runs[1]).toMatchObject({
+			isFirstRun: false,
+			changedDeps: [],
+			depth: 0,
+		});
+	});
+
+	test("変化したdepの名前と値プレビューを報告する", () => {
+		const events = collectEvents();
+		const inst: InstanceStore = {};
+		const effect = __wrapEffect("Effect_App_Line5", () => {}, inst);
+
+		__captureDeps(
+			inst,
+			"Effect_App_Line5",
+			["count", "name"],
+			[null, null],
+			[0, "x"],
+		);
+		effect();
+		__captureDeps(
+			inst,
+			"Effect_App_Line5",
+			["count", "name"],
+			[null, null],
+			[1, "x"],
+		);
+		effect();
+
+		const runs = effectRuns(events);
+		expect(runs[1].changedDeps).toHaveLength(1);
+		expect(runs[1].changedDeps?.[0]).toMatchObject({
+			name: "count",
+			index: 0,
+			prevPreview: "0",
+			nextPreview: "1",
+			sameValueNewRef: false,
+		});
+	});
+
+	test("値は同じで参照だけ変わった依存にsameValueNewRefを立てる（メモ化漏れ検出）", () => {
+		const events = collectEvents();
+		const inst: InstanceStore = {};
+		const effect = __wrapEffect("Effect_App_Line5", () => {}, inst);
+
+		__captureDeps(
+			inst,
+			"Effect_App_Line5",
+			["handler", "config"],
+			[null, null],
+			[() => {}, { mode: "auto", limit: 5 }],
+		);
+		effect();
+		__captureDeps(
+			inst,
+			"Effect_App_Line5",
+			["handler", "config"],
+			[null, null],
+			[() => {}, { mode: "auto", limit: 5 }],
+		);
+		effect();
+
+		const runs = effectRuns(events);
+		expect(runs[1].changedDeps?.[0].sameValueNewRef).toBe(true);
+		expect(runs[1].changedDeps?.[1].sameValueNewRef).toBe(true);
+	});
+
+	test("中身が変わった配列・オブジェクトはsameValueNewRefにしない", () => {
+		const events = collectEvents();
+		const inst: InstanceStore = {};
+		const effect = __wrapEffect("Effect_App_Line5", () => {}, inst);
+
+		__captureDeps(
+			inst,
+			"Effect_App_Line5",
+			["items", "config"],
+			[null, null],
+			[[1, 2, 3], { mode: "auto" }],
+		);
+		effect();
+		__captureDeps(
+			inst,
+			"Effect_App_Line5",
+			["items", "config"],
+			[null, null],
+			[[4, 5, 6], { mode: "manual" }],
+		);
+		effect();
+
+		const runs = effectRuns(events);
+		// 同じ長さの配列(Array(3)同士)でも中身が違えばメモ化漏れではない
+		expect(runs[1].changedDeps?.[0].sameValueNewRef).toBe(false);
+		expect(runs[1].changedDeps?.[1].sameValueNewRef).toBe(false);
+	});
+
+	test("handler起点の連鎖: 未帰属の書き込みで発火したeffectはdepth=1・causeEffectId=null", () => {
+		const events = collectEvents();
+		const original = vi.fn();
+		const setCount = __wrapSetter(original, "App", 3);
+		const inst: InstanceStore = {};
+		const effect = __wrapEffect("Effect_App_Line8", () => {}, inst);
+
+		__captureDeps(
+			inst,
+			"Effect_App_Line8",
+			["count"],
+			["State_App_Line3"],
+			[0],
+		);
+		effect();
+
+		// handlerからの書き込み（イベントにはならないが因果記録は残る）
+		setCount(1);
+
+		__captureDeps(
+			inst,
+			"Effect_App_Line8",
+			["count"],
+			["State_App_Line3"],
+			[1],
+		);
+		effect();
+
+		const runs = effectRuns(events);
+		expect(runs[1]).toMatchObject({
+			depth: 1,
+			causeEffectId: null,
+			causeStateId: "State_App_Line3",
+		});
+	});
+
+	test("effect連鎖: 書き込み元effectを辿ってdepthが積み上がる", () => {
+		const events = collectEvents();
+		const setA = __wrapSetter(vi.fn(), "App", 3);
+		const setB = __wrapSetter(vi.fn(), "App", 4);
+		const inst: InstanceStore = {};
+
+		// E1(handler起点でaを書く) → E2(a依存、bを書く) → E3(b依存)
+		const e1 = __wrapEffect(
+			"Effect_App_Line10",
+			() => {
+				setA(1);
+			},
+			inst,
+		);
+		const e2 = __wrapEffect(
+			"Effect_App_Line14",
+			() => {
+				setB(1);
+			},
+			inst,
+		);
+		const e3 = __wrapEffect("Effect_App_Line18", () => {}, inst);
+
+		__captureDeps(inst, "Effect_App_Line14", ["a"], ["State_App_Line3"], [0]);
+		__captureDeps(inst, "Effect_App_Line18", ["b"], ["State_App_Line4"], [0]);
+		e2();
+		e3();
+
+		e1(); // 初回deps記録なし → depth 0 で a を書く
+
+		__captureDeps(inst, "Effect_App_Line14", ["a"], ["State_App_Line3"], [1]);
+		e2(); // aの変化で発火 → cause=E1, depth=1 → b を depth1 で書く
+
+		__captureDeps(inst, "Effect_App_Line18", ["b"], ["State_App_Line4"], [1]);
+		e3(); // bの変化で発火 → cause=E2, depth=2
+
+		const runs = effectRuns(events);
+		const e2Second = runs.filter((r) => r.effectId === "Effect_App_Line14")[1];
+		const e3Second = runs.filter((r) => r.effectId === "Effect_App_Line18")[1];
+
+		expect(e2Second).toMatchObject({
+			causeEffectId: "Effect_App_Line10",
+			causeStateId: "State_App_Line3",
+			depth: 1,
+		});
+		expect(e3Second).toMatchObject({
+			causeEffectId: "Effect_App_Line14",
+			causeStateId: "State_App_Line4",
+			depth: 2,
+		});
+
+		// effect内のstate書き込みイベントにも深度が乗る
+		const bUpdate = events.filter(
+			(e) => e.kind === "state-update" && e.stateId === "State_App_Line4",
+		);
+		expect(bUpdate.at(-1)).toMatchObject({ depth: 1 });
+	});
+
+	test("非同期（Closure Binding）の書き込みは最終実行深度から復元する", () => {
+		const events = collectEvents();
+		const setA = __wrapSetter(vi.fn(), "App", 3);
+		const inst: InstanceStore = {};
+
+		let boundSetter: ((v: unknown) => void) | null = null;
+		const effect = __wrapEffect(
+			"Effect_App_Line10",
+			() => {
+				boundSetter = (v: unknown) => setA(v, "Effect_App_Line10");
+			},
+			inst,
+		);
+
+		// depth=1 の状況を作る（handler書き込み → dep変化で発火）
+		const setTrigger = __wrapSetter(vi.fn(), "App", 2);
+		__captureDeps(inst, "Effect_App_Line10", ["t"], ["State_App_Line2"], [0]);
+		effect();
+		setTrigger(1);
+		__captureDeps(inst, "Effect_App_Line10", ["t"], ["State_App_Line2"], [1]);
+		effect();
+
+		// effect終了後（await後相当）の書き込み
+		boundSetter?.(42);
+
+		const updates = events.filter(
+			(e) => e.kind === "state-update" && e.stateId === "State_App_Line3",
+		);
+		expect(updates.at(-1)).toMatchObject({
+			effectId: "Effect_App_Line10",
+			depth: 1,
+		});
 	});
 });

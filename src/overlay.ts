@@ -4,6 +4,7 @@ import type {
 	Butterfly,
 	ButterflyEffectOptions,
 	ButterflyEvent,
+	StateUpdateEvent,
 } from "./types.js";
 
 const TWO_PI = Math.PI * 2;
@@ -61,13 +62,14 @@ class ButterflyCanvas {
 		return Math.min(1, this.butterflies.length / max);
 	}
 
-	createButterfly(event: ButterflyEvent) {
+	createButterfly(event: StateUpdateEvent) {
 		if (this.butterflies.length >= (this.options?.maxButterflies || 0)) {
 			this.butterflies.shift();
 		}
 
 		const { x, y } = this.pickSpawnPoint();
 		const { x: targetX, y: targetY } = this.pickTargetPoint();
+		const depth = Math.max(0, event.depth);
 
 		const butterfly: Butterfly = {
 			id: event.id,
@@ -82,8 +84,10 @@ class ButterflyCanvas {
 			// モルフォは大きな翅でゆったり羽ばたく。速いとセセリチョウになる
 			flapSpeed: 0.16 + Math.random() * 0.1,
 			speed: 2.2 + Math.random() * 2,
-			size: 16 + Math.random() * 12,
+			// 連鎖の深い羽ばたきほど大きく描き、嵐の芽を目立たせる
+			size: (16 + Math.random() * 12) * (1 + Math.min(depth, 5) * 0.12),
 			hue: this.getBaseHue(event.componentName),
+			depth,
 			opacity: 0,
 			life: 0,
 			maxLife: (this.options?.animationSpeed || 1000) / 16,
@@ -236,8 +240,9 @@ class ButterflyCanvas {
 
 	private drawButterfly(butterfly: Butterfly, chaos: number) {
 		const { x, y, size, opacity, heading, flapPhase } = butterfly;
-		// 蝶が増えるほど青(平穏)から紫紅(嵐の予兆)へ寄せる
-		const hue = butterfly.hue + chaos * 80;
+		// 蝶が増えるほど青(平穏)から紫紅(嵐の予兆)へ寄せる。
+		// 連鎖の深い個体はさらに紫側へ振り、原因の遠い羽ばたきを見分けられるように
+		const hue = butterfly.hue + chaos * 80 + Math.min(butterfly.depth, 5) * 8;
 		const ctx = this.ctx;
 
 		// |cos|そのままだと閉じている時間が長く見えるため、べき乗で
@@ -451,12 +456,28 @@ export function initOverlay(options: ButterflyEffectOptions) {
         </div>
         <div>setState in Effect: <span id="butterfly-update-count">0</span></div>
         <div>Active Butterflies: <span id="butterfly-active-count">0</span></div>
+        <div>Max Chain Depth: <span id="butterfly-max-depth">0</span></div>
       `;
 			container.appendChild(panel);
 		}
 
 		let updateCount = 0;
+		let maxDepth = 0;
 		ButterflyEvents.on((event: ButterflyEvent) => {
+			if (event.depth > maxDepth) {
+				maxDepth = event.depth;
+				const maxDepthElem = document.getElementById("butterfly-max-depth");
+				if (maxDepthElem) {
+					maxDepthElem.textContent = maxDepth.toString();
+				}
+			}
+
+			// effect-runは因果データ用のイベント。蝶になるのは
+			// 「effect内のsetState」= state-updateだけ
+			if (event.kind !== "state-update") {
+				return;
+			}
+
 			updateCount++;
 			canvas.createButterfly(event);
 
