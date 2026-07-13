@@ -6,6 +6,9 @@ import {
 	ButterflyEvents,
 	getCurrentEffectId,
 	type InstanceStore,
+	isRecording,
+	startRecording,
+	stopRecording,
 } from "../runtime";
 import type { ButterflyEvent, EffectRunEvent } from "../types";
 
@@ -16,6 +19,7 @@ const collectEvents = () => {
 };
 
 afterEach(() => {
+	stopRecording();
 	ButterflyEvents.clear();
 });
 
@@ -434,5 +438,59 @@ describe("__captureDeps + 発火原因の特定", () => {
 			effectId: "Effect_App_Line10",
 			depth: 1,
 		});
+	});
+});
+
+describe("Recording", () => {
+	test("録画中に観測したイベントだけを収集する", () => {
+		const setter = __wrapSetter(vi.fn(), "App", 3);
+
+		setter(1, "Effect_App_Line5");
+		startRecording();
+		setter(2, "Effect_App_Line5");
+		setter(3, "Effect_App_Line5");
+		const recording = stopRecording();
+		setter(4, "Effect_App_Line5");
+
+		expect(recording).not.toBeNull();
+		expect(recording?.events).toHaveLength(2);
+		expect(recording?.truncated).toBe(false);
+		expect(recording?.startedAt).toBeLessThanOrEqual(recording?.stoppedAt ?? 0);
+		expect(recording?.events.every((e) => e.kind === "state-update")).toBe(
+			true,
+		);
+	});
+
+	test("state-updateとeffect-runの両方を記録する", () => {
+		const setter = __wrapSetter(vi.fn(), "App", 3);
+		const inst: InstanceStore = {};
+		const effect = __wrapEffect(
+			"Effect_App_Line8",
+			() => {
+				setter(1);
+			},
+			inst,
+		);
+
+		startRecording();
+		effect();
+		const recording = stopRecording();
+
+		const kinds = recording?.events.map((e) => e.kind);
+		expect(kinds).toContain("effect-run");
+		expect(kinds).toContain("state-update");
+	});
+
+	test("isRecordingが録画状態を反映し、二重startと停止済みstopは無害", () => {
+		expect(isRecording()).toBe(false);
+		expect(stopRecording()).toBeNull();
+
+		startRecording();
+		startRecording();
+		expect(isRecording()).toBe(true);
+
+		const recording = stopRecording();
+		expect(recording).not.toBeNull();
+		expect(isRecording()).toBe(false);
 	});
 });

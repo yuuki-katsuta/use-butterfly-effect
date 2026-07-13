@@ -331,6 +331,29 @@ test.describe("Butterfly Effect E2E Tests", () => {
 		});
 	});
 
+	test.describe("録画とレポート", () => {
+		test("Record→操作→Stopでタイムラインレポートが表示される", async ({
+			page,
+		}) => {
+			await page.goto("/#NestedEffect");
+			await waitForStatusPanel(page);
+
+			await page.locator("#butterfly-record-toggle").click();
+			await page.getByTestId("trigger").click();
+			await page.waitForTimeout(300);
+			await page.locator("#butterfly-record-toggle").click();
+
+			const report = page.locator("#butterfly-report");
+			await expect(report).toBeVisible();
+			await expect(page.locator("#butterfly-report-summary")).toContainText(
+				"effect runs:",
+			);
+
+			await page.locator("#butterfly-report-close").click();
+			await expect(report).toHaveCount(0);
+		});
+	});
+
 	test.describe("Canvasオーバーレイ", () => {
 		test("Canvasが存在し、正しいサイズで描画される", async ({ page }) => {
 			await page.goto("/#BasicUseEffect");

@@ -11,6 +11,7 @@ import type {
 	ButterflyEvent,
 	ButterflyEventListener,
 	ChangedDep,
+	Recording,
 	StateUpdateData,
 } from "./types.js";
 
@@ -41,6 +42,71 @@ class ButterflyEventEmitter {
 }
 
 export const ButterflyEvents = new ButterflyEventEmitter();
+
+// ============================================
+// Recording
+// ============================================
+
+// 常時バッファリングにしないのは、録画していない間のオーバーヘッドを
+// ゼロにするため。リスナーは録画中だけ登録する
+const MAX_RECORDED_EVENTS = 10_000;
+
+type ActiveRecording = {
+	startedAt: number;
+	/** 循環バッファ。shift()だと上限到達後の1イベント毎にO(n)かかる */
+	buffer: (ButterflyEvent | undefined)[];
+	head: number;
+	total: number;
+	off: () => void;
+};
+
+let activeRecording: ActiveRecording | null = null;
+
+export function isRecording(): boolean {
+	return activeRecording !== null;
+}
+
+export function startRecording(): void {
+	if (activeRecording) return;
+
+	const recording: ActiveRecording = {
+		startedAt: Date.now(),
+		buffer: new Array(MAX_RECORDED_EVENTS),
+		head: 0,
+		total: 0,
+		off: () => {},
+	};
+	recording.off = ButterflyEvents.on((event) => {
+		recording.buffer[recording.head] = event;
+		recording.head = (recording.head + 1) % MAX_RECORDED_EVENTS;
+		recording.total++;
+	});
+	activeRecording = recording;
+}
+
+export function stopRecording(): Recording | null {
+	const recording = activeRecording;
+	if (!recording) return null;
+
+	recording.off();
+	activeRecording = null;
+
+	const truncated = recording.total > MAX_RECORDED_EVENTS;
+	const events: ButterflyEvent[] = [];
+	const count = Math.min(recording.total, MAX_RECORDED_EVENTS);
+	const start = truncated ? recording.head : 0;
+	for (let i = 0; i < count; i++) {
+		const event = recording.buffer[(start + i) % MAX_RECORDED_EVENTS];
+		if (event) events.push(event);
+	}
+
+	return {
+		startedAt: recording.startedAt,
+		stoppedAt: Date.now(),
+		events,
+		truncated,
+	};
+}
 
 // ============================================
 // Deps Capture（発火原因の特定）

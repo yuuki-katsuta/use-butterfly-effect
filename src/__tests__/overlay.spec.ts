@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { ButterflyEvents } from "../runtime";
+import { ButterflyEvents, stopRecording } from "../runtime";
 import type { ButterflyEffectOptions } from "../types";
 
 describe("initOverlay", () => {
@@ -9,6 +9,7 @@ describe("initOverlay", () => {
 		vi.clearAllMocks();
 
 		// Clear event listeners to prevent cross-test contamination
+		stopRecording();
 		ButterflyEvents.clear();
 
 		// Mock canvas context for testing
@@ -300,6 +301,94 @@ describe("initOverlay", () => {
 			expect(
 				document.getElementById("butterfly-update-count")?.textContent,
 			).toBe("0");
+		});
+	});
+
+	describe("録画とレポート", () => {
+		const setup = async () => {
+			Object.defineProperty(document, "readyState", {
+				writable: true,
+				value: "complete",
+			});
+			const { initOverlay } = await import("../overlay");
+			initOverlay({ enabled: true, showStatus: true });
+		};
+
+		test("Recordボタンで録画を開始・停止し、停止後にレポートが表示される", async () => {
+			await setup();
+
+			const button = document.getElementById(
+				"butterfly-record-toggle",
+			) as HTMLButtonElement;
+			expect(button).not.toBeNull();
+			expect(button.textContent).toContain("Record");
+
+			button.click();
+			expect(button.textContent).toContain("Stop");
+
+			ButterflyEvents.emit({
+				kind: "state-update",
+				id: "rec-1",
+				componentName: "App",
+				line: 4,
+				timestamp: Date.now(),
+				effectId: "Effect_App_Line8_mtest",
+				stateId: "State_App_Line4_mtest",
+				depth: 1,
+			});
+			ButterflyEvents.emit({
+				kind: "effect-run",
+				id: "rec-2",
+				effectId: "Effect_App_Line8_mtest",
+				timestamp: Date.now(),
+				isFirstRun: false,
+				depth: 1,
+				changedDeps: [],
+				causeEffectId: null,
+				causeStateId: null,
+			});
+
+			button.click();
+			expect(button.textContent).toContain("Record");
+
+			const report = document.getElementById("butterfly-report");
+			expect(report).not.toBeNull();
+			expect(
+				document.getElementById("butterfly-report-summary")?.textContent,
+			).toContain("effect runs: 1");
+			expect(document.getElementById("butterfly-report-export")).not.toBeNull();
+		});
+
+		test("✕ボタンでレポートを閉じられる", async () => {
+			await setup();
+
+			const button = document.getElementById(
+				"butterfly-record-toggle",
+			) as HTMLButtonElement;
+			button.click();
+			button.click();
+
+			const close = document.getElementById(
+				"butterfly-report-close",
+			) as HTMLButtonElement;
+			expect(close).not.toBeNull();
+			close.click();
+
+			expect(document.getElementById("butterfly-report")).toBeNull();
+		});
+
+		test("プログラマブルAPIをwindowに公開する", async () => {
+			await setup();
+
+			const api = (
+				window as unknown as {
+					__BUTTERFLY_EFFECT__?: Record<string, unknown>;
+				}
+			).__BUTTERFLY_EFFECT__;
+			expect(api).toBeDefined();
+			expect(typeof api?.startRecording).toBe("function");
+			expect(typeof api?.stopRecording).toBe("function");
+			expect(typeof api?.isRecording).toBe("function");
 		});
 	});
 });

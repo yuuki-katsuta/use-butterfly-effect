@@ -1,9 +1,15 @@
 import { createNoise2D } from "simplex-noise";
-import { ButterflyEvents } from "./runtime.js";
+import {
+	ButterflyEvents,
+	isRecording,
+	startRecording,
+	stopRecording,
+} from "./runtime.js";
 import type {
 	Butterfly,
 	ButterflyEffectOptions,
 	ButterflyEvent,
+	Recording,
 	StateUpdateEvent,
 } from "./types.js";
 
@@ -416,6 +422,212 @@ class ButterflyCanvas {
 	}
 }
 
+const LANE_HEIGHT = 22;
+const LANE_GUTTER = 132;
+const AXIS_HEIGHT = 24;
+
+const depthColor = (depth: number): string => {
+	const palette = ["#64748b", "#3b82f6", "#8b5cf6", "#c026d3", "#e11d48"];
+	return palette[Math.min(depth, palette.length - 1)];
+};
+
+/** Effect_App_Line5_m3x2k → App:L5 */
+const laneLabel = (effectId: string): string => {
+	const match = effectId.match(/^Effect_(.+)_Line(\d+)_m/);
+	if (!match) return effectId.slice(0, 16);
+	const name = match[1].length > 12 ? `${match[1].slice(0, 12)}…` : match[1];
+	return `${name}:L${match[2]}`;
+};
+
+const drawTimeline = (canvas: HTMLCanvasElement, recording: Recording) => {
+	const lanes: string[] = [];
+	for (const event of recording.events) {
+		if (!lanes.includes(event.effectId)) {
+			lanes.push(event.effectId);
+		}
+	}
+
+	const width = Math.min(660, Math.max(320, window.innerWidth - 96));
+	const height = AXIS_HEIGHT + Math.max(1, lanes.length) * LANE_HEIGHT + 8;
+	const dpr = window.devicePixelRatio || 1;
+	canvas.width = width * dpr;
+	canvas.height = height * dpr;
+	canvas.style.width = `${width}px`;
+	canvas.style.height = `${height}px`;
+
+	// biome-ignore lint/style/noNonNullAssertion: canvas要素の2Dコンテキストは必ず取得できる
+	const ctx = canvas.getContext("2d")!;
+	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+	const t0 = recording.startedAt;
+	// 全イベントが同時刻でもゼロ除算にならないよう最低1msの幅を確保
+	const t1 = Math.max(recording.stoppedAt, t0 + 1);
+	const plotWidth = width - LANE_GUTTER - 16;
+	const x = (ts: number) => LANE_GUTTER + ((ts - t0) / (t1 - t0)) * plotWidth;
+	const y = (laneIndex: number) =>
+		AXIS_HEIGHT + laneIndex * LANE_HEIGHT + LANE_HEIGHT / 2;
+
+	ctx.font = "10px monospace";
+	ctx.textBaseline = "middle";
+
+	ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+	ctx.textAlign = "left";
+	const durationMs = t1 - t0;
+	for (const ratio of [0, 0.25, 0.5, 0.75, 1]) {
+		const tickX = LANE_GUTTER + plotWidth * ratio;
+		const ms = durationMs * ratio;
+		const label =
+			ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
+		ctx.fillText(label, tickX - 8, AXIS_HEIGHT / 2);
+		ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+		ctx.beginPath();
+		ctx.moveTo(tickX, AXIS_HEIGHT - 4);
+		ctx.lineTo(tickX, height - 8);
+		ctx.stroke();
+	}
+
+	lanes.forEach((effectId, i) => {
+		ctx.fillStyle = "rgba(255, 255, 255, 0.75)";
+		ctx.textAlign = "left";
+		ctx.fillText(laneLabel(effectId), 8, y(i));
+
+		ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+		ctx.beginPath();
+		ctx.moveTo(LANE_GUTTER, y(i));
+		ctx.lineTo(width - 16, y(i));
+		ctx.stroke();
+	});
+
+	// イベントは時系列順なので、因果の矢印は「原因effectのレーンで
+	// 直前に描いた点」へ遡って引ける
+	const lastPointByLane = new Map<string, { x: number; y: number }>();
+
+	for (const event of recording.events) {
+		const laneIndex = lanes.indexOf(event.effectId);
+		const px = x(event.timestamp);
+		const py = y(laneIndex);
+		const color = depthColor(event.depth);
+
+		if (event.kind === "effect-run") {
+			if (event.causeEffectId) {
+				const from = lastPointByLane.get(event.causeEffectId);
+				if (from) {
+					ctx.strokeStyle = color;
+					ctx.globalAlpha = 0.45;
+					ctx.beginPath();
+					ctx.moveTo(from.x, from.y);
+					ctx.quadraticCurveTo(
+						(from.x + px) / 2,
+						(from.y + py) / 2 - 10,
+						px,
+						py,
+					);
+					ctx.stroke();
+					ctx.globalAlpha = 1;
+				}
+			}
+
+			ctx.beginPath();
+			ctx.arc(px, py, 4, 0, Math.PI * 2);
+			if (event.isFirstRun) {
+				ctx.strokeStyle = color;
+				ctx.stroke();
+			} else {
+				ctx.fillStyle = color;
+				ctx.fill();
+			}
+		} else {
+			ctx.fillStyle = color;
+			ctx.globalAlpha = 0.8;
+			ctx.beginPath();
+			ctx.moveTo(px, py - 3);
+			ctx.lineTo(px + 3, py);
+			ctx.lineTo(px, py + 3);
+			ctx.lineTo(px - 3, py);
+			ctx.closePath();
+			ctx.fill();
+			ctx.globalAlpha = 1;
+		}
+
+		lastPointByLane.set(event.effectId, { x: px, y: py });
+	}
+};
+
+const showRecordingReport = (container: HTMLElement, recording: Recording) => {
+	document.getElementById("butterfly-report")?.remove();
+
+	const report = document.createElement("div");
+	report.id = "butterfly-report";
+	report.style.cssText = `
+    position: absolute;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    background: rgba(10, 10, 18, 0.92);
+    color: white;
+    padding: 14px;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 12px;
+    pointer-events: auto;
+    backdrop-filter: blur(10px);
+    max-width: calc(100vw - 40px);
+  `;
+
+	const durationSec = (
+		(recording.stoppedAt - recording.startedAt) /
+		1000
+	).toFixed(1);
+	const effectRuns = recording.events.filter(
+		(e) => e.kind === "effect-run",
+	).length;
+	const stateUpdates = recording.events.length - effectRuns;
+
+	const header = document.createElement("div");
+	header.style.cssText =
+		"display: flex; align-items: center; gap: 10px; margin-bottom: 10px;";
+	header.innerHTML = `
+    <span style="font-weight: bold; font-size: 13px;">🦋 Recording</span>
+    <span id="butterfly-report-summary" style="opacity: 0.7;">${durationSec}s / effect runs: ${effectRuns} / setState: ${stateUpdates}${recording.truncated ? " (truncated)" : ""}</span>
+    <span style="flex: 1;"></span>
+    <button type="button" id="butterfly-report-export" style="
+      padding: 3px 8px; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px;
+      background: transparent; color: white; font-family: inherit; font-size: 11px; cursor: pointer;
+    ">Export JSON</button>
+    <button type="button" id="butterfly-report-close" style="
+      padding: 3px 8px; border: none; border-radius: 4px;
+      background: transparent; color: white; font-family: inherit; font-size: 13px; cursor: pointer;
+    ">✕</button>
+  `;
+	report.appendChild(header);
+
+	const scroller = document.createElement("div");
+	scroller.style.cssText = "max-height: 40vh; overflow-y: auto;";
+	const canvas = document.createElement("canvas");
+	scroller.appendChild(canvas);
+	report.appendChild(scroller);
+
+	container.appendChild(report);
+	drawTimeline(canvas, recording);
+
+	header
+		.querySelector("#butterfly-report-close")
+		?.addEventListener("click", () => report.remove());
+	header
+		.querySelector("#butterfly-report-export")
+		?.addEventListener("click", () => {
+			const blob = new Blob([JSON.stringify(recording, null, 2)], {
+				type: "application/json",
+			});
+			const url = URL.createObjectURL(blob);
+			const anchor = document.createElement("a");
+			anchor.href = url;
+			anchor.download = `butterfly-recording-${recording.startedAt}.json`;
+			anchor.click();
+			URL.revokeObjectURL(url);
+		});
+};
+
 export function initOverlay(options: ButterflyEffectOptions) {
 	// Create overlay container
 	const container = document.createElement("div");
@@ -457,8 +669,37 @@ export function initOverlay(options: ButterflyEffectOptions) {
         <div>setState in Effect: <span id="butterfly-update-count">0</span></div>
         <div>Active Butterflies: <span id="butterfly-active-count">0</span></div>
         <div>Max Chain Depth: <span id="butterfly-max-depth">0</span></div>
+        <button type="button" id="butterfly-record-toggle" style="
+          margin-top: 10px;
+          width: 100%;
+          padding: 5px 8px;
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          border-radius: 5px;
+          background: transparent;
+          color: white;
+          font-family: inherit;
+          font-size: 12px;
+          cursor: pointer;
+        ">⏺ Record</button>
       `;
 			container.appendChild(panel);
+
+			const recordButton = panel.querySelector<HTMLButtonElement>(
+				"#butterfly-record-toggle",
+			);
+			recordButton?.addEventListener("click", () => {
+				if (isRecording()) {
+					const recording = stopRecording();
+					recordButton.textContent = "⏺ Record";
+					if (recording) {
+						showRecordingReport(container, recording);
+					}
+				} else {
+					document.getElementById("butterfly-report")?.remove();
+					startRecording();
+					recordButton.textContent = "⏹ Stop";
+				}
+			});
 		}
 
 		let updateCount = 0;
@@ -487,6 +728,15 @@ export function initOverlay(options: ButterflyEffectOptions) {
 			}
 		});
 	}
+
+	// パネル非表示(showStatus: false)でもコンソールやテストランナーから
+	// 録画を操作できるように、プログラマブルAPIを公開する
+	(window as unknown as Record<string, unknown>).__BUTTERFLY_EFFECT__ = {
+		startRecording,
+		stopRecording,
+		isRecording,
+		events: ButterflyEvents,
+	};
 
 	// Wait for DOM to be ready
 	if (document.readyState === "loading") {

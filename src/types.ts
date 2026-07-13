@@ -60,6 +60,15 @@ export type ButterflyEvent = StateUpdateEvent | EffectRunEvent;
 
 export type ButterflyEventListener = (event: ButterflyEvent) => void;
 
+export interface Recording {
+	startedAt: number;
+	stoppedAt: number;
+	/** 録画中に観測した全イベント（上限超過時は古い方から破棄） */
+	events: ButterflyEvent[];
+	/** バッファ上限による取りこぼしがあったか */
+	truncated: boolean;
+}
+
 export type Butterfly = {
 	id: string;
 	x: number;
