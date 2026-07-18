@@ -10,8 +10,17 @@ export default defineConfig({
 		butterflyEffect({
 			enabled: true,
 			showStatus: true,
-			animationSpeed: 1000,
+			animationSpeed: 4000,
 			maxButterflies: 100,
 		}) as PluginOption,
 	],
+	optimizeDeps: {
+		// file:リンク開発ではdist再ビルドが最適化キャッシュに反映されない
+		// (キャッシュはlockfile変更でしか無効化されない)ため、プラグインが
+		// 登録するincludeをここで打ち消し、常にdistの実体を配信させる
+		exclude: [
+			"vite-plugin-butterfly-effect/runtime",
+			"vite-plugin-butterfly-effect/overlay",
+		],
+	},
 });

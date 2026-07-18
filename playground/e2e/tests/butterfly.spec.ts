@@ -246,6 +246,27 @@ test.describe("Butterfly Effect E2E Tests", () => {
 			await expect(page.getByTestId("state-b")).toContainText("1");
 			await expect(page.getByTestId("state-c")).toContainText("1");
 		});
+
+		test("連鎖の因果が追跡され、Max Chain Depthが2以上になる", async ({
+			page,
+		}) => {
+			// trigger(handler) → effect1がA更新 → effect2がB更新 → effect3がC更新
+			// という3段連鎖なので、深度は最低でも2に達する。
+			// 3回のReactコミットを跨ぐため固定待ちではなくポーリングする
+			await page.getByTestId("trigger").click();
+
+			await expect
+				.poll(
+					async () => {
+						const text = await page
+							.locator("#butterfly-max-depth")
+							.textContent();
+						return Number.parseInt(text || "0", 10);
+					},
+					{ timeout: 5000 },
+				)
+				.toBeGreaterThanOrEqual(2);
+		});
 	});
 
 	test.describe("UseCallbackMemo - 蝶が舞わないケース（正しくメモ化）", () => {
@@ -307,6 +328,41 @@ test.describe("Butterfly Effect E2E Tests", () => {
 			await expect(panel).toContainText("Butterfly Effect");
 			await expect(panel).toContainText("setState in Effect:");
 			await expect(panel).toContainText("Active Butterflies:");
+		});
+	});
+
+	test.describe("StormLoop - 更新ループの検出", () => {
+		test("effectの自己ループでストーム警告が表示される", async ({ page }) => {
+			await page.goto("/#StormLoop");
+			await waitForStatusPanel(page);
+
+			const storm = page.locator("#butterfly-storm");
+			await expect(storm).toBeVisible({ timeout: 5000 });
+			await expect(storm).toContainText("⚡ Update loop:");
+			await expect(storm).toContainText("StormLoop");
+		});
+	});
+
+	test.describe("録画とレポート", () => {
+		test("Record→操作→Stopでタイムラインレポートが表示される", async ({
+			page,
+		}) => {
+			await page.goto("/#NestedEffect");
+			await waitForStatusPanel(page);
+
+			await page.locator("#butterfly-record-toggle").click();
+			await page.getByTestId("trigger").click();
+			await page.waitForTimeout(300);
+			await page.locator("#butterfly-record-toggle").click();
+
+			const report = page.locator("#butterfly-report");
+			await expect(report).toBeVisible();
+			await expect(page.locator("#butterfly-report-summary")).toContainText(
+				"effect runs:",
+			);
+
+			await page.locator("#butterfly-report-close").click();
+			await expect(report).toHaveCount(0);
 		});
 	});
 

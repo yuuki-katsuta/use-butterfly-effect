@@ -27,6 +27,15 @@ export default defineConfig({
 			),
 		},
 	},
+	optimizeDeps: {
+		// 最適化キャッシュはlockfile変更でしか無効化されず、dist再ビルドが
+		// 反映されないままE2Eが旧ランタイムを検証してしまうため、
+		// プラグインが登録するincludeを打ち消して常にdistの実体を配信させる
+		exclude: [
+			"vite-plugin-butterfly-effect/runtime",
+			"vite-plugin-butterfly-effect/overlay",
+		],
+	},
 	server: {
 		port: 5174,
 	},
