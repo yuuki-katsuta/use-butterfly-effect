@@ -6,7 +6,7 @@ import { CachedSetter } from "./fixtures/CachedSetter";
 import { DependencyTrap } from "./fixtures/DependencyTrap";
 import { HooksEffect } from "./fixtures/Hooks";
 import { NestedEffect } from "./fixtures/NestedEffect";
-import { NoBlockScopeEffect } from "./fixtures/NOBlockScopeEffect";
+import { NoBlockScopeEffect } from "./fixtures/NoBlockScopeEffect";
 import { NoEffect } from "./fixtures/NoEffect";
 import { SetStateOnly } from "./fixtures/SetStateOnly";
 import { StormLoop } from "./fixtures/StormLoop";

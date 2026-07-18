@@ -139,13 +139,17 @@ export function __captureDeps(
 	values: unknown,
 ): unknown {
 	if (inst) {
-		const record = (inst[effectId] ??= {
-			names,
-			stateIds,
-			pending: undefined,
-			lastRun: undefined,
-			hasLastRun: false,
-		});
+		let record = inst[effectId];
+		if (!record) {
+			record = {
+				names,
+				stateIds,
+				pending: undefined,
+				lastRun: undefined,
+				hasLastRun: false,
+			};
+			inst[effectId] = record;
+		}
 		record.names = names;
 		record.stateIds = stateIds;
 		record.pending = Array.isArray(values) ? values : undefined;
