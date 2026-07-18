@@ -377,6 +377,27 @@ describe("initOverlay", () => {
 			expect(document.getElementById("butterfly-report")).toBeNull();
 		});
 
+		test("stormイベントで循環パスの警告が表示される", async () => {
+			await setup();
+
+			ButterflyEvents.emit({
+				kind: "storm",
+				id: "storm-1",
+				timestamp: Date.now(),
+				cycle: ["Effect_Loop_Line8_mtest"],
+				depth: 4,
+			});
+
+			const storm = document.getElementById("butterfly-storm");
+			expect(storm?.style.display).toBe("block");
+			expect(storm?.textContent).toContain("⚡ Update loop:");
+			expect(storm?.textContent).toContain("Loop:L8 → Loop:L8");
+			// stormは蝶のカウントに含めない
+			expect(
+				document.getElementById("butterfly-update-count")?.textContent,
+			).toBe("0");
+		});
+
 		test("プログラマブルAPIをwindowに公開する", async () => {
 			await setup();
 

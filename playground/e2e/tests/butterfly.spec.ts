@@ -331,6 +331,18 @@ test.describe("Butterfly Effect E2E Tests", () => {
 		});
 	});
 
+	test.describe("StormLoop - 更新ループの検出", () => {
+		test("effectの自己ループでストーム警告が表示される", async ({ page }) => {
+			await page.goto("/#StormLoop");
+			await waitForStatusPanel(page);
+
+			const storm = page.locator("#butterfly-storm");
+			await expect(storm).toBeVisible({ timeout: 5000 });
+			await expect(storm).toContainText("⚡ Update loop:");
+			await expect(storm).toContainText("StormLoop");
+		});
+	});
+
 	test.describe("録画とレポート", () => {
 		test("Record→操作→Stopでタイムラインレポートが表示される", async ({
 			page,

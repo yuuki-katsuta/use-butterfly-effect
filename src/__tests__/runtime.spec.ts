@@ -441,6 +441,133 @@ describe("__captureDeps + 発火原因の特定", () => {
 	});
 });
 
+describe("ストーム検知", () => {
+	const storms = (events: ButterflyEvent[]) =>
+		events.filter((e) => e.kind === "storm");
+
+	test("自己ループ（effectが自分のdepを書く）でstormイベントを発火する", () => {
+		const events = collectEvents();
+		const setX = __wrapSetter(vi.fn(), "Loop", 3);
+		const inst: InstanceStore = {};
+		const effectId = "Effect_Loop_Line8_mself";
+		const effect = __wrapEffect(
+			effectId,
+			() => {
+				setX(1, effectId);
+			},
+			inst,
+		);
+
+		__captureDeps(inst, effectId, ["x"], ["State_Loop_Line3"], [0]);
+		effect();
+		__captureDeps(inst, effectId, ["x"], ["State_Loop_Line3"], [1]);
+		effect();
+
+		const detected = storms(events);
+		expect(detected).toHaveLength(1);
+		expect(detected[0]).toMatchObject({ cycle: [effectId] });
+	});
+
+	test("同一循環はクールダウン中に再通知しない", () => {
+		const events = collectEvents();
+		const setX = __wrapSetter(vi.fn(), "Loop2", 3);
+		const inst: InstanceStore = {};
+		const effectId = "Effect_Loop2_Line8_mcool";
+		const effect = __wrapEffect(
+			effectId,
+			() => {
+				setX(1, effectId);
+			},
+			inst,
+		);
+
+		__captureDeps(inst, effectId, ["x"], ["State_Loop2_Line3"], [0]);
+		effect();
+		for (let i = 1; i <= 5; i++) {
+			__captureDeps(inst, effectId, ["x"], ["State_Loop2_Line3"], [i]);
+			effect();
+		}
+
+		expect(storms(events)).toHaveLength(1);
+	});
+
+	test("2つのeffectが互いを発火させ合う循環を検出する", () => {
+		const events = collectEvents();
+		const setX = __wrapSetter(vi.fn(), "Ping", 3);
+		const setY = __wrapSetter(vi.fn(), "Ping", 4);
+		const inst: InstanceStore = {};
+		const idA = "Effect_Ping_Line10_mab";
+		const idB = "Effect_Ping_Line14_mab";
+		const effectA = __wrapEffect(
+			idA,
+			() => {
+				setX(1, idA);
+			},
+			inst,
+		);
+		const effectB = __wrapEffect(
+			idB,
+			() => {
+				setY(1, idB);
+			},
+			inst,
+		);
+
+		// A(y依存でxを書く) ⇄ B(x依存でyを書く)
+		__captureDeps(inst, idA, ["y"], ["State_Ping_Line4"], [0]);
+		effectA();
+		__captureDeps(inst, idB, ["x"], ["State_Ping_Line3"], [1]);
+		effectB();
+		__captureDeps(inst, idA, ["y"], ["State_Ping_Line4"], [1]);
+		effectA();
+		__captureDeps(inst, idB, ["x"], ["State_Ping_Line3"], [2]);
+		effectB();
+
+		const detected = storms(events);
+		expect(detected.length).toBeGreaterThanOrEqual(1);
+		expect(detected[0].cycle).toContain(idA);
+		expect(detected[0].cycle).toContain(idB);
+	});
+
+	test("循環しない直線の連鎖ではstormを発火しない", () => {
+		const events = collectEvents();
+		const setA = __wrapSetter(vi.fn(), "Chain", 3);
+		const setB = __wrapSetter(vi.fn(), "Chain", 4);
+		const inst: InstanceStore = {};
+		const id1 = "Effect_Chain_Line10_mlin";
+		const id2 = "Effect_Chain_Line14_mlin";
+		const id3 = "Effect_Chain_Line18_mlin";
+		const e1 = __wrapEffect(
+			id1,
+			() => {
+				setA(1, id1);
+			},
+			inst,
+		);
+		const e2 = __wrapEffect(
+			id2,
+			() => {
+				setB(1, id2);
+			},
+			inst,
+		);
+		const e3 = __wrapEffect(id3, () => {}, inst);
+
+		__captureDeps(inst, id2, ["a"], ["State_Chain_Line3"], [0]);
+		e2();
+		__captureDeps(inst, id3, ["b"], ["State_Chain_Line4"], [0]);
+		e3();
+
+		e1();
+		__captureDeps(inst, id2, ["a"], ["State_Chain_Line3"], [1]);
+		e2();
+		__captureDeps(inst, id3, ["b"], ["State_Chain_Line4"], [1]);
+		e3();
+
+		expect(storms(events)).toHaveLength(0);
+	});
+});
+
 describe("Recording", () => {
 	test("録画中に観測したイベントだけを収集する", () => {
 		const setter = __wrapSetter(vi.fn(), "App", 3);

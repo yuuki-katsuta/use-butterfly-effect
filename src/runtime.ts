@@ -249,9 +249,47 @@ let currentEffectId: string | null = null;
 let currentDepth = 0;
 
 // 非同期（Closure Binding）経由の書き込みは同期コンテキストが失われる
-// ため、effectId毎の最終実行深度から深度を復元する（同一effectIdの
-// 複数インスタンスは近似になる）
-const lastRunDepth = new Map<string, number>();
+// ため、effectId毎の最終実行メタから深度を復元する（同一effectIdの
+// 複数インスタンスは近似になる）。causeEffectIdは循環検出で因果を遡る
+// リンクとして使う
+type LastRunMeta = { depth: number; causeEffectId: string | null; at: number };
+const lastRunMeta = new Map<string, LastRunMeta>();
+
+// ============================================
+// Storm Detection（更新ループの検出）
+// ============================================
+
+const STORM_WINDOW_MS = 3000;
+const STORM_COOLDOWN_MS = 3000;
+const stormCooldown = new Map<string, number>();
+
+/**
+ * 因果リンクを遡り、今回のeffectに戻る循環があればそのパスを返す。
+ * 古いリンクを辿ると過去の無関係な連鎖と偽の循環を作るため、
+ * 直近STORM_WINDOW_MS以内の実行だけを追う
+ */
+const detectCycle = (
+	effectId: string,
+	causeEffectId: string | null,
+	now: number,
+): string[] | null => {
+	const path = [effectId];
+	let cursor = causeEffectId;
+	let hops = 0;
+	while (cursor && hops < 12) {
+		if (cursor === effectId) {
+			return path;
+		}
+		path.push(cursor);
+		const meta = lastRunMeta.get(cursor);
+		if (!meta || now - meta.at > STORM_WINDOW_MS) {
+			return null;
+		}
+		cursor = meta.causeEffectId;
+		hops++;
+	}
+	return null;
+};
 
 // state毎の最終書き込み元。effect発火の因果を遡るために、
 // イベントにならない書き込み（handler等）も記録する
@@ -303,11 +341,13 @@ export function __wrapEffect<T extends () => unknown>(
 			}
 		}
 
+		const now = Date.now();
+
 		ButterflyEvents.emit({
 			kind: "effect-run",
-			id: `effect-${Date.now()}-${updateCounter++}`,
+			id: `effect-${now}-${updateCounter++}`,
 			effectId,
-			timestamp: Date.now(),
+			timestamp: now,
 			isFirstRun,
 			depth,
 			changedDeps,
@@ -315,7 +355,27 @@ export function __wrapEffect<T extends () => unknown>(
 			causeStateId,
 		});
 
-		lastRunDepth.set(effectId, depth);
+		if (causeEffectId) {
+			const cycle = detectCycle(effectId, causeEffectId, now);
+			if (cycle) {
+				// 循環は解消されるまで毎実行検出されるため、同一循環の
+				// 再通知はクールダウンで間引く
+				const signature = cycle.join(">");
+				const lastEmitted = stormCooldown.get(signature) ?? 0;
+				if (now - lastEmitted > STORM_COOLDOWN_MS) {
+					stormCooldown.set(signature, now);
+					ButterflyEvents.emit({
+						kind: "storm",
+						id: `storm-${now}-${updateCounter++}`,
+						timestamp: now,
+						cycle: [...cycle].reverse(),
+						depth,
+					});
+				}
+			}
+		}
+
+		lastRunMeta.set(effectId, { depth, causeEffectId, at: now });
 		currentEffectId = effectId;
 		currentDepth = depth;
 		try {
@@ -326,7 +386,7 @@ export function __wrapEffect<T extends () => unknown>(
 			if (typeof cleanup === "function") {
 				return () => {
 					currentEffectId = effectId;
-					currentDepth = lastRunDepth.get(effectId) ?? 0;
+					currentDepth = lastRunMeta.get(effectId)?.depth ?? 0;
 					try {
 						(cleanup as () => void)();
 					} finally {
@@ -399,7 +459,7 @@ export function __wrapSetter(
 					? 0
 					: resolvedEffectId === currentEffectId
 						? currentDepth
-						: (lastRunDepth.get(resolvedEffectId) ?? 0);
+						: (lastRunMeta.get(resolvedEffectId)?.depth ?? 0);
 
 			lastWriteByState.set(stateId, {
 				effectId: resolvedEffectId,

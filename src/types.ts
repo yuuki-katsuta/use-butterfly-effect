@@ -56,7 +56,17 @@ export interface EffectRunEvent {
 	causeStateId: string | null;
 }
 
-export type ButterflyEvent = StateUpdateEvent | EffectRunEvent;
+export interface StormEvent {
+	kind: "storm";
+	id: string;
+	timestamp: number;
+	/** 循環しているeffectの列。cycle[i]がcycle[i+1]を発火させ、
+	 *  末尾が先頭を発火させて一周する */
+	cycle: string[];
+	depth: number;
+}
+
+export type ButterflyEvent = StateUpdateEvent | EffectRunEvent | StormEvent;
 
 export type ButterflyEventListener = (event: ButterflyEvent) => void;
 

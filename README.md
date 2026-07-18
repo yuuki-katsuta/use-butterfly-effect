@@ -21,6 +21,7 @@ https://github.com/user-attachments/assets/1a563ffe-b9af-4d5a-8bb0-303cd58dd037
 - **Explains why each effect ran**: every effect run records which dependency changed, its before/after values, which effect wrote that state, and the resulting cascade depth (`handler → effect → effect` = depth 2). Reference-only changes with identical values are flagged — the classic missing-memoization bug.
 - **Renders each tracked update as a butterfly** on a click-through canvas overlay. Deeper-cascade butterflies render larger and more violet; the status panel shows live counts and the max chain depth.
 - **Records sessions on demand**: hit ⏺ Record on the status panel, interact, hit ⏹ Stop — a swimlane timeline appears (one lane per effect, runs and state writes plotted over time, causal arrows between lanes, colors by cascade depth), exportable as JSON. Also scriptable via `window.__BUTTERFLY_EFFECT__.startRecording()` / `.stopRecording()`.
+- **Detects update storms**: when causality loops back on itself (an effect firing itself, or a ring of effects firing each other), the panel names the exact cycle (`⚡ Update loop: A:L8 → B:L14 → A:L8`), the swarm goes full storm, and recordings mark the moment with a red ⚡ line.
 
 Unlike lint rules (`react-hooks/set-state-in-effect`), this happens at runtime: it sees asynchronous writes, chained effects, and how *often* they fire — not just where they are written.
 
@@ -75,8 +76,8 @@ Run `vite` and interact with your app. Butterflies appear whenever an effect wri
 
 - [x] Root-cause tracking: which dependency change fired the effect, and who wrote it
 - [x] Recording with a timeline report of effect/state activity
+- [x] Storm detection: named update loops with visual escalation
 - [ ] Causal graph (DAG) of effect → state → effect chains
-- [ ] Storm detection: warn when update cycles run hot
 - [ ] `useReducer` support
 
 ## License

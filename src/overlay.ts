@@ -30,6 +30,7 @@ class ButterflyCanvas {
 	private noise2D = createNoise2D();
 	private running = false;
 	private idleFrames = 0;
+	private stormUntil = 0;
 
 	constructor(container: HTMLElement, options: ButterflyEffectOptions) {
 		this.options = options;
@@ -62,10 +63,19 @@ class ButterflyCanvas {
 		this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 	}
 
-	/** 蝶の数に対する飽和度。色相・羽ばたき・軌跡・ビネットの強度を駆動する */
+	/** 蝶の数に対する飽和度。色相・羽ばたき・軌跡・ビネットの強度を駆動する。
+	 *  ストーム検出中は蝶の数に関係なく最大まで振り切る */
 	private chaosLevel(): number {
+		if (Date.now() < this.stormUntil) {
+			return 1;
+		}
 		const max = Math.max(1, this.options.maxButterflies || 10);
 		return Math.min(1, this.butterflies.length / max);
+	}
+
+	triggerStorm() {
+		this.stormUntil = Date.now() + 4000;
+		this.start();
 	}
 
 	createButterfly(event: StateUpdateEvent) {
@@ -183,7 +193,7 @@ class ButterflyCanvas {
 		this.drawVignette(chaos);
 		this.updateActiveButterflyCount();
 
-		if (this.butterflies.length === 0) {
+		if (this.butterflies.length === 0 && Date.now() >= this.stormUntil) {
 			// 蝶が消えても軌跡とビネットが残っているため、
 			// 完全に消え切るまで描き続けてから停止する
 			this.idleFrames++;
@@ -442,6 +452,7 @@ const laneLabel = (effectId: string): string => {
 const drawTimeline = (canvas: HTMLCanvasElement, recording: Recording) => {
 	const lanes: string[] = [];
 	for (const event of recording.events) {
+		if (event.kind === "storm") continue;
 		if (!lanes.includes(event.effectId)) {
 			lanes.push(event.effectId);
 		}
@@ -503,6 +514,20 @@ const drawTimeline = (canvas: HTMLCanvasElement, recording: Recording) => {
 	const lastPointByLane = new Map<string, { x: number; y: number }>();
 
 	for (const event of recording.events) {
+		if (event.kind === "storm") {
+			const px = x(event.timestamp);
+			ctx.strokeStyle = "rgba(248, 113, 113, 0.7)";
+			ctx.beginPath();
+			ctx.moveTo(px, AXIS_HEIGHT - 4);
+			ctx.lineTo(px, height - 8);
+			ctx.stroke();
+			ctx.fillStyle = "rgba(248, 113, 113, 0.9)";
+			ctx.textAlign = "center";
+			ctx.fillText("⚡", px, AXIS_HEIGHT / 2);
+			ctx.textAlign = "left";
+			continue;
+		}
+
 		const laneIndex = lanes.indexOf(event.effectId);
 		const px = x(event.timestamp);
 		const py = y(laneIndex);
@@ -669,6 +694,7 @@ export function initOverlay(options: ButterflyEffectOptions) {
         <div>setState in Effect: <span id="butterfly-update-count">0</span></div>
         <div>Active Butterflies: <span id="butterfly-active-count">0</span></div>
         <div>Max Chain Depth: <span id="butterfly-max-depth">0</span></div>
+        <div id="butterfly-storm" style="display: none; margin-top: 8px; color: #f87171; max-width: 260px;"></div>
         <button type="button" id="butterfly-record-toggle" style="
           margin-top: 10px;
           width: 100%;
@@ -711,6 +737,19 @@ export function initOverlay(options: ButterflyEffectOptions) {
 				if (maxDepthElem) {
 					maxDepthElem.textContent = maxDepth.toString();
 				}
+			}
+
+			if (event.kind === "storm") {
+				canvas.triggerStorm();
+				const stormElem = document.getElementById("butterfly-storm");
+				if (stormElem) {
+					const path = [...event.cycle, event.cycle[0]]
+						.map(laneLabel)
+						.join(" → ");
+					stormElem.textContent = `⚡ Update loop: ${path}`;
+					stormElem.style.display = "block";
+				}
+				return;
 			}
 
 			// effect-runは因果データ用のイベント。蝶になるのは
