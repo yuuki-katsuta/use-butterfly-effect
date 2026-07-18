@@ -1,6 +1,6 @@
 # 🦋 vite-plugin-butterfly-effect
 
-[![CI](https://github.com/yuuki-katsuta/butterfly-effect/actions/workflows/ci.yml/badge.svg)](https://github.com/yuuki-katsuta/butterfly-effect/actions/workflows/ci.yml)
+[![CI](https://github.com/yuuki-katsuta/use-butterfly-effect/actions/workflows/ci.yml/badge.svg)](https://github.com/yuuki-katsuta/use-butterfly-effect/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/vite-plugin-butterfly-effect.svg)](https://www.npmjs.com/package/vite-plugin-butterfly-effect)
 [![license](https://img.shields.io/npm/l/vite-plugin-butterfly-effect.svg)](./LICENSE)
 

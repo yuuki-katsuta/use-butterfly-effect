@@ -50,11 +50,11 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/yuuki-katsuta/butterfly-effect.git"
+		"url": "git+https://github.com/yuuki-katsuta/use-butterfly-effect.git"
 	},
-	"homepage": "https://github.com/yuuki-katsuta/butterfly-effect#readme",
+	"homepage": "https://github.com/yuuki-katsuta/use-butterfly-effect#readme",
 	"bugs": {
-		"url": "https://github.com/yuuki-katsuta/butterfly-effect/issues"
+		"url": "https://github.com/yuuki-katsuta/use-butterfly-effect/issues"
 	},
 	"engines": {
 		"node": "^20.19.0 || >=22.12.0"
